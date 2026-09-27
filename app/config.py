@@ -8,7 +8,7 @@ def _env(name, default=None):
 
 
 APP_NAME = "Freshapp.io Music Tagger"
-VERSION = "1.6.1"
+VERSION = "1.6.2"
 
 MUSIC_ROOT = Path(_env("MUSIC_ROOT", "/music")).resolve()
 DATA_DIR = Path(_env("DATA_DIR", "/data")).resolve()

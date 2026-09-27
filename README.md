@@ -19,7 +19,7 @@ Application web (Docker) pour nettoyer les tags d'une grosse bibliothèque MP3,
 typiquement servie par [Navidrome](https://www.navidrome.org/).
 
 - **Nom technique** : `freshapp-music-tagger`
-- **Version** : 1.6.1
+- **Version** : 1.6.2
 - **Auteur** : FreshApp.io
 
 ### Fonctionnement
@@ -209,7 +209,7 @@ Dockerised web app to clean up the tags of a large MP3 library, typically
 served by [Navidrome](https://www.navidrome.org/).
 
 - **Technical name**: `freshapp-music-tagger`
-- **Version**: 1.6.1
+- **Version**: 1.6.2
 - **Author**: FreshApp.io
 
 ### How it works

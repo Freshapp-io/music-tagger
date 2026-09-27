@@ -235,7 +235,7 @@ body.login-page { align-items: center; justify-content: center; padding: 16px; }
 /* ---- theme / language switches, folder context */
 .switches { display: flex; gap: 6px; flex-wrap: wrap; }
 .login-lang { margin-top: 16px; }
-.folder-context { margin: -4px 0 12px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.folder-context { margin: 0 0 12px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
 .crumbs { font-size: 13px; word-break: break-word; }
 .crumbs .crumb { padding: 0 2px; font-size: 13px; }
 .folder-context .chips { margin-top: 4px; }
@@ -275,6 +275,9 @@ td, .mono { overflow-wrap: anywhere; }
   body.nav-open { overflow: hidden; }
 
   main { padding: 16px 14px calc(40px + env(safe-area-inset-bottom)); }
+  button, .btn { white-space: normal; text-align: center; }
+  .group-head, .batchbar, .toolbar, .actions, .review-top, .review-actions { flex-wrap: wrap; }
+  .seg { flex-wrap: wrap; }
   h1 { font-size: 24px; }
   .form-grid { grid-template-columns: 1fr; }
 
@@ -295,7 +298,6 @@ td, .mono { overflow-wrap: anywhere; }
   .drawer-body { width: 100vw; padding: 14px 14px calc(40px + env(safe-area-inset-bottom)); }
   .drawer .ed-close { position: fixed; top: 10px; right: 10px; z-index: 46; background: var(--panel); box-shadow: var(--shadow); }
   .drawer-head { flex-wrap: wrap; padding-right: 44px; }
-  .drawer .folder-context { margin-right: 50px; }
   .drawer-head img { width: 72px; height: 72px; }
   .actions button, .tcard-actions button { flex: 1 1 auto; }
 

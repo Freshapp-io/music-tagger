@@ -451,7 +451,6 @@ async function albumEditor(root, dir, opts = {}) {
   let view = isVarious ? "cards" : "table";
 
   root.innerHTML = `
-    <div class="folder-context">${folderContext(d)}</div>
     <div class="drawer-head">
       ${coverTrack ? `<img src="/api/cover?${qs({ path: coverTrack.path })}" alt="">` : `<img alt="">`}
       <div class="grow">
@@ -462,6 +461,7 @@ async function albumEditor(root, dir, opts = {}) {
       </div>
       ${opts.onClose ? `<button class="ed-close" title="${t("Fermer")}">✕</button>` : ""}
     </div>
+    <div class="folder-context">${folderContext(d)}</div>
 
     <div class="panel">
       <div class="form-grid">
