@@ -47,6 +47,45 @@ def _esc(s):
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
 
+def _summary(r, **extra):
+    media = r.get("media", [])
+    return {
+        "id": r["id"], "title": r.get("title"), "artist": _credit(r.get("artist-credit")),
+        "date": r.get("date", ""), "country": r.get("country", ""),
+        "format": " + ".join(sorted({m.get("format") or "?" for m in media})),
+        "tracks": sum(m.get("track-count") or len(m.get("tracks", [])) for m in media),
+        "score": r.get("score", 100), "status": r.get("status", ""),
+        "disambiguation": r.get("disambiguation", ""),
+        "label": ", ".join(li.get("label", {}).get("name", "") for li in r.get("label-info", []) if li.get("label")),
+        **extra,
+    }
+
+
+def toc(durations):
+    """CD table of contents built from track lengths in seconds: 75 sectors per
+    second, first track after the standard 2 s (150 sectors) lead-in."""
+    offsets, pos = [], 150
+    for d in durations:
+        offsets.append(pos)
+        pos += max(1, int(round(d * 75)))
+    return f"1 {len(durations)} {pos} " + " ".join(map(str, offsets))
+
+
+def by_durations(durations):
+    """Releases whose CD track lengths match these durations, in this order
+    (MusicBrainz fuzzy TOC lookup: no title or artist needed; a few seconds
+    of difference per track are tolerated, the track count must be equal)."""
+    if not durations or len(durations) > 99 or any(not d for d in durations):
+        return []
+    data = _get("discid/-", {"toc": toc(durations), "cdstubs": "no", "inc": "artist-credits labels"})
+    seen, out = set(), []
+    for r in data.get("releases", []):
+        if r["id"] not in seen:
+            seen.add(r["id"])
+            out.append(_summary(r, by_durations=True))
+    return out
+
+
 def search(artist, album, n_tracks=None):
     q = f'release:"{_esc(album)}"'
     if artist and not is_various(artist):
@@ -54,17 +93,7 @@ def search(artist, album, n_tracks=None):
     data = _get("release", {"query": q, "limit": 25})
     if not data.get("releases"):
         data = _get("release", {"query": f"{album} {artist or ''}".strip(), "limit": 25})
-    out = []
-    for r in data.get("releases", []):
-        tc = sum(m.get("track-count", 0) for m in r.get("media", []))
-        out.append({
-            "id": r["id"], "title": r.get("title"), "artist": _credit(r.get("artist-credit")),
-            "date": r.get("date", ""), "country": r.get("country", ""),
-            "format": " + ".join(sorted({m.get("format", "?") for m in r.get("media", [])})),
-            "tracks": tc, "score": r.get("score", 0), "status": r.get("status", ""),
-            "disambiguation": r.get("disambiguation", ""),
-            "label": ", ".join(li.get("label", {}).get("name", "") for li in r.get("label-info", []) if li.get("label")),
-        })
+    out = [_summary(r) for r in data.get("releases", [])]
     if n_tracks:
         # Same score: prefer the release whose track count matches the folder.
         out.sort(key=lambda x: (-x["score"], abs(x["tracks"] - n_tracks)))
@@ -143,11 +172,25 @@ def match(files, rel):
     for i, t in enumerate(mb):
         by_pos[(t["disc"], t["position"])] = i
     discs = rel["tracks"][0]["discs"] if mb else 1
+    default_disc = 1
+    if discs > 1:
+        # A folder usually holds one disc of a box set: pick the medium with the
+        # same number of tracks and the closest lengths.
+        lengths = [f.get("duration") or 0 for f in files]
+        best = None
+        for d in range(1, discs + 1):
+            medium = [t["length"] for t in mb if t["disc"] == d]
+            if len(medium) == len(files):
+                diff = sum(abs(a - b) for a, b in zip(lengths, medium))
+                if best is None or diff < best[0]:
+                    best = (diff, d)
+        if best:
+            default_disc = best[1]
 
     def file_pos(f):
         g = parse_filename(f["filename"])
         tr = f["track"] or g.get("track")
-        dc = f["disc"] or g.get("disc") or "1"
+        dc = f["disc"] or g.get("disc") or str(default_disc)
         try:
             return int(str(dc).split("/")[0]) if discs > 1 else 1, int(str(tr).split("/")[0])
         except (TypeError, ValueError):
@@ -169,8 +212,11 @@ def match(files, rel):
     for f in files:
         p = file_pos(f)
         i = by_pos.get(p) if p else None
-        same_count = len(files) == len(mb)
-        if i is not None and i not in used and (same_count or sim(f, mb[i]) >= 0.45):
+        # Trust the track number when the folder is the whole medium, when the
+        # title looks alike, or when the length matches to within 3 s.
+        same_count = len(files) in (len(mb), len([t for t in mb if t["disc"] == default_disc]))
+        close = i is not None and f.get("duration") and mb[i]["length"] and abs(f["duration"] - mb[i]["length"]) <= 3
+        if i is not None and i not in used and (same_count or close or sim(f, mb[i]) >= 0.45):
             used.add(i)
             result.append({"path": f["path"], "index": i, "score": round(sim(f, mb[i]), 2)})
         else:

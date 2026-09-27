@@ -19,7 +19,7 @@ Application web (Docker) pour nettoyer les tags d'une grosse bibliothèque MP3,
 typiquement servie par [Navidrome](https://www.navidrome.org/).
 
 - **Nom technique** : `freshapp-music-tagger`
-- **Version** : 1.3.0
+- **Version** : 1.4.0
 - **Auteur** : FreshApp.io
 
 ### Fonctionnement
@@ -49,7 +49,10 @@ nom du dossier, titres et numéros de piste déduits des noms de fichiers.
 - **Piste par piste** : pour les compilations, chaque morceau se tague et
   s'enregistre séparément, avec suggestion depuis le nom de fichier ou recherche
   du morceau sur MusicBrainz.
-- **MusicBrainz** : recherche de l'album, association fichiers ↔ pistes
+- **MusicBrainz** : recherche de l'album par nom **et par durées des pistes**
+  (comme la recherche freedb de Mp3tag : les durées et l'ordre des morceaux
+  suffisent, même sans aucun tag, pour retrouver les éditions CD
+  correspondantes), association fichiers ↔ pistes
   (numéro, titre, durée), tags complets avec identifiants MusicBrainz, pochette
   depuis Cover Art Archive. Les modifications en cours (genre…) sont enregistrées
   avant, et le genre n'est jamais écrasé.
@@ -197,7 +200,7 @@ Dockerised web app to clean up the tags of a large MP3 library, typically
 served by [Navidrome](https://www.navidrome.org/).
 
 - **Technical name**: `freshapp-music-tagger`
-- **Version**: 1.3.0
+- **Version**: 1.4.0
 - **Author**: FreshApp.io
 
 ### How it works
@@ -226,7 +229,9 @@ the folder name, titles and track numbers derived from file names.
   (Ctrl+S) to write the changes while staying on the album.
 - **Track by track**: for compilations, each track is tagged and saved on its
   own, with a suggestion from the file name or a MusicBrainz track search.
-- **MusicBrainz**: album search, automatic file ↔ track matching (number, title,
+- **MusicBrainz**: album search by name **and by track lengths** (like
+  Mp3tag's freedb lookup: track lengths and order alone find the matching CD
+  releases, even with no tags at all), automatic file ↔ track matching (number, title,
   duration), full tags with MusicBrainz IDs, cover art from Cover Art Archive.
   Pending edits (genre…) are saved first, and the genre is never overwritten.
 - **Duplicates**: the best-quality version is pre-selected (bitrate, number of

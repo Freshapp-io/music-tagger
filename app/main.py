@@ -368,6 +368,19 @@ def mb_search(artist: str = "", album: str = "", n: Optional[int] = None):
         raise HTTPException(502, f"MusicBrainz : {e}")
 
 
+@app.get("/api/mb/by-durations")
+def mb_by_durations(dir: str):
+    """Look the folder up on MusicBrainz from its track lengths and order only."""
+    with db.session() as c:
+        files = fixes.tracks_of(c, dir)
+    durations = [f["duration"] for f in files]
+    try:
+        releases = musicbrainz.by_durations(durations)
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"MusicBrainz : {e}")
+    return {"tracks": len(files), "complete": all(durations), "releases": releases}
+
+
 @app.get("/api/mb/recordings")
 def mb_recordings(artist: str = "", title: str = ""):
     try:

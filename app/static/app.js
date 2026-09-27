@@ -653,12 +653,24 @@ function mbPanel(root, dir, tracks, q, onApplied, editor) {
   box.scrollIntoView({ behavior: "smooth" });
   const search = () => run(async () => {
     const out = $(".mb-results", box);
-    out.innerHTML = `<div class="muted">Recherche…</div>`;
-    const res = await api("GET", "/api/mb/search?" + qs({ artist: $(".mb-artist", box).value, album: $(".mb-album", box).value, n: tracks.length }));
-    if (!res.length) { out.innerHTML = `<div class="muted">Aucun résultat</div>`; return; }
-    out.innerHTML = res.slice(0, 15).map((r) => `
+    out.innerHTML = `<div class="muted">Recherche par nom et par durées des pistes…</div>`;
+    const artist = $(".mb-artist", box).value.trim(), album = $(".mb-album", box).value.trim();
+    // Both lookups at once: by name, and by track lengths + order (CD table of contents).
+    const [byName, byDur] = await Promise.all([
+      artist || album ? api("GET", "/api/mb/search?" + qs({ artist, album, n: tracks.length })) : Promise.resolve([]),
+      api("GET", "/api/mb/by-durations?" + qs({ dir })).catch(() => ({ releases: [], failed: true })),
+    ]);
+    const merged = new Map(byDur.releases.map((r) => [r.id, r]));
+    for (const r of byName) merged.set(r.id, merged.has(r.id) ? { ...r, by_durations: true } : r);
+    const res = [...merged.values()].sort((a, b) => (!!b.by_durations - !!a.by_durations) || (b.score - a.score));
+    const nDur = byDur.releases.length;
+    const durLine = byDur.failed ? `<span class="conf-low">Recherche par durées indisponible (MusicBrainz ne répond pas)</span>`
+      : nDur ? `<span class="conf-high">✓ ${nDur} édition(s) CD dont les ${tracks.length} durées correspondent, en tête de liste</span>`
+      : `<span class="muted">Aucune édition CD ne correspond aux ${tracks.length} durées (il faut exactement le même nombre de pistes que le CD).</span>`;
+    if (!res.length) { out.innerHTML = `<div class="small">${durLine}</div><div class="muted">Aucun résultat</div>`; return; }
+    out.innerHTML = `<div class="small" style="margin-bottom:6px">${durLine}</div>` + res.slice(0, 20).map((r) => `
       <div class="mb-result" data-id="${r.id}">
-        <div><b>${esc(r.title)}</b> — ${esc(r.artist)} ${r.disambiguation ? `<span class="muted">(${esc(r.disambiguation)})</span>` : ""}
+        <div>${r.by_durations ? `<span class="chip g-clean" title="Nombre de pistes et durées identiques à ce dossier">durées ✓</span> ` : ""}<b>${esc(r.title)}</b> — ${esc(r.artist)} ${r.disambiguation ? `<span class="muted">(${esc(r.disambiguation)})</span>` : ""}
           <div class="small muted">${esc(r.date)} ${esc(r.country)} · ${esc(r.format)} · ${esc(r.label)} · ${esc(r.status)}</div></div>
         <div class="small" style="text-align:right"><b class="${r.tracks === tracks.length ? "conf-high" : "conf-medium"}">${r.tracks} pistes</b><div class="muted">score ${r.score}</div></div>
       </div>`).join("");
@@ -670,7 +682,7 @@ function mbPanel(root, dir, tracks, q, onApplied, editor) {
   });
   $(".mb-search", box).onclick = search;
   for (const inp of $$(".mb-artist, .mb-album", box)) inp.onkeydown = (e) => e.key === "Enter" && search();
-  if (q.album) search();
+  search();          // durations work even when nothing is typed
 }
 
 async function mbMatch(panel, dir, tracks, releaseId, onApplied, editor) {
@@ -681,6 +693,15 @@ async function mbMatch(panel, dir, tracks, releaseId, onApplied, editor) {
   const opt = (i, sel) => `<option value="${i}" ${i === sel ? "selected" : ""}>${rel.tracks[i].discs > 1 ? rel.tracks[i].disc + "-" : ""}${rel.tracks[i].position}. ${esc(rel.tracks[i].title)} (${fmtDur(rel.tracks[i].length)})</option>`;
   box.innerHTML = `
     <h2>${esc(rel.albumartist)} — ${esc(rel.title)} <span class="muted small">${esc(rel.date)} · ${rel.tracks.length} pistes</span></h2>
+    ${(() => {
+      const diffs = mapping.filter((m) => m.index !== null && byPath[m.path].duration && rel.tracks[m.index].length)
+        .map((m) => Math.abs(byPath[m.path].duration - rel.tracks[m.index].length));
+      if (!diffs.length) return "";
+      const avg = diffs.reduce((a, b) => a + b, 0) / diffs.length, max = Math.max(...diffs);
+      const cls = max <= 3 ? "conf-high" : avg <= 8 ? "conf-medium" : "conf-low";
+      const hint = max <= 3 ? "même édition très probablement" : avg <= 8 ? "même album, autre mastering ou édition possible" : "durées éloignées : vérifiez l'édition";
+      return `<p class="small ${cls}">Durées : écart moyen ${avg.toFixed(1)} s, maximum ${Math.round(max)} s sur ${diffs.length} piste(s) associée(s) — ${hint}</p>`;
+    })()}
     <table class="tracks"><thead><tr><th></th><th>Fichier</th><th>Durée</th><th>Piste MusicBrainz</th><th>Score</th></tr></thead>
     <tbody>${mapping.map((m) => `
       <tr data-path="${esc(m.path)}">

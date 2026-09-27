@@ -50,3 +50,36 @@ def test_retries_when_musicbrainz_is_busy(monkeypatch):
     musicbrainz._cache.clear()
     assert musicbrainz.search_recordings("Aretha Franklin", "Respect") == []
     assert len(calls) == 3
+
+
+def test_toc_from_durations():
+    # 150-sector lead-in, 75 sectors per second, lead-out after the last track
+    assert musicbrainz.toc([2, 3]) == "1 2 525 150 300"
+
+
+def test_by_durations_uses_fuzzy_toc(monkeypatch):
+    seen = {}
+
+    def fake_get(path, params):
+        seen.update(path=path, **params)
+        return {"releases": [
+            {"id": "r1", "title": "Kind of Blue", "artist-credit": [{"name": "Miles Davis", "joinphrase": ""}],
+             "date": "1959", "media": [{"format": "CD", "track-count": 5}]},
+            {"id": "r1", "title": "dup"}]}
+    monkeypatch.setattr(musicbrainz, "_get", fake_get)
+    res = musicbrainz.by_durations([562, 586, 337, 693, 566])
+    assert seen["path"] == "discid/-" and seen["toc"].startswith("1 5 ") and seen["cdstubs"] == "no"
+    assert [(r["id"], r["tracks"], r["by_durations"]) for r in res] == [("r1", 5, True)]
+    assert musicbrainz.by_durations([100, None]) == []     # unknown length: no lookup
+
+
+def test_match_picks_the_disc_whose_lengths_fit():
+    tracks = []
+    for disc, lengths in ((1, [100, 200, 300]), (2, [410, 120, 250])):
+        for i, l in enumerate(lengths, 1):
+            tracks.append({"disc": disc, "discs": 2, "position": i, "count": 3, "title": f"T{disc}{i}",
+                           "artist": "A", "artist_id": None, "recording_id": f"r{disc}{i}", "track_id": None, "length": l})
+    rel = {"tracks": tracks}
+    files = [f(f"x/0{i}.mp3", f"0{i}.mp3", None, str(i), d) for i, d in enumerate([409, 121, 251], 1)]
+    got = [tracks[m["index"]]["disc"] for m in musicbrainz.match(files, rel)]
+    assert got == [2, 2, 2]
