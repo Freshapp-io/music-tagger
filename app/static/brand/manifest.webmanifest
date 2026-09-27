@@ -1,0 +1,13 @@
+{
+  "name": "Freshapp.io Music Tagger",
+  "short_name": "Music Tagger",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f8f6",
+  "theme_color": "#1E6FA5",
+  "icons": [
+    { "src": "/static/brand/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/brand/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/static/brand/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

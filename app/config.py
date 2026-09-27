@@ -7,8 +7,8 @@ def _env(name, default=None):
     return v if v not in (None, "") else default
 
 
-APP_NAME = "Freshapp Music Tagger"
-VERSION = "1.2.0"
+APP_NAME = "Freshapp.io Music Tagger"
+VERSION = "1.3.0"
 
 MUSIC_ROOT = Path(_env("MUSIC_ROOT", "/music")).resolve()
 DATA_DIR = Path(_env("DATA_DIR", "/data")).resolve()

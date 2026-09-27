@@ -35,3 +35,18 @@ def test_unrelated_file_left_unmapped():
     r = rel(["Intro", "Nautilus", "Jamaica"], [60, 300, 200])
     files = [f("x/z.mp3", "z.mp3", "Completely Different Song", None, 999)]
     assert musicbrainz.match(files, r)[0]["index"] is None
+
+
+def test_retries_when_musicbrainz_is_busy(monkeypatch):
+    import httpx
+    calls = []
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        calls.append(url)
+        code = 503 if len(calls) < 3 else 200
+        return httpx.Response(code, json={"recordings": []}, request=httpx.Request("GET", url))
+    monkeypatch.setattr(musicbrainz.httpx, "get", fake_get)
+    monkeypatch.setattr(musicbrainz.time, "sleep", lambda s: None)
+    musicbrainz._cache.clear()
+    assert musicbrainz.search_recordings("Aretha Franklin", "Respect") == []
+    assert len(calls) == 3

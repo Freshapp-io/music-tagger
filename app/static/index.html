@@ -3,18 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Freshapp Music Tagger</title>
+  <title>Freshapp.io Music Tagger</title>
   <meta name="theme-color" content="#1E6FA5">
   <link rel="icon" href="/static/brand/favicon.ico" sizes="any">
+  <link rel="icon" type="image/svg+xml" href="/static/brand/icon-small.svg">
+  <link rel="manifest" href="/static/brand/manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/brand/favicon-32x32.png">
   <link rel="apple-touch-icon" href="/static/brand/apple-touch-icon.png">
+  <meta name="color-scheme" content="light dark">
+  <script src="/static/theme.js"></script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <aside class="sidebar">
-    <a class="brand" href="#/" title="Freshapp Music Tagger">
-      <img src="/static/brand/colibri.svg" alt="">
-      <span class="brand-name"><span class="fa"><span class="g">Fresh</span><span class="t">app</span></span><span class="app">Music Tagger</span></span>
+    <a class="brand" href="#/" title="Freshapp.io Music Tagger">
+      <img src="/static/brand/icon.svg" alt="">
+      <span class="brand-name"><span class="fa"><span class="g">Fresh</span><span class="t">app</span><span class="i">.io</span></span><span class="app">Music Tagger</span></span>
     </a>
     <nav id="nav">
       <a href="#/" data-view="dashboard">Tableau de bord</a>
@@ -27,7 +31,10 @@
       <a href="#/history" data-view="history">Historique</a>
     </nav>
     <div id="job" class="job hidden"></div>
-    <div class="version">v<span id="version"></span> · <a href="https://github.com/Freshapp-io/music-tagger" target="_blank" rel="noopener">GitHub<span class="visually-hidden"> (nouvelle fenêtre)</span></a>
+    <div class="version">v<span id="version"></span> · <a href="https://github.com/Freshapp-io/music-tagger" target="_blank" rel="noopener">GitHub<span class="visually-hidden"> (nouvelle fenêtre)</span></a> · <a href="https://www.freshapp.io" target="_blank" rel="noopener">freshapp.io<span class="visually-hidden"> (nouvelle fenêtre)</span></a>
+      <div class="theme-switch" role="group" aria-label="Thème">
+        <button type="button" data-theme-choice="auto" title="Suivre le thème du système">Auto</button><button type="button" data-theme-choice="light">Clair</button><button type="button" data-theme-choice="dark">Sombre</button>
+      </div>
       <div class="toolbar" style="margin:8px 0 0"><span id="who"></span><button class="link logout" id="logout">Se déconnecter</button></div></div>
   </aside>
   <main id="main"></main>

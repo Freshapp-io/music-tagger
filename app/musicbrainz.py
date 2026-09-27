@@ -19,13 +19,18 @@ def _get(path, params):
     key = (path, tuple(sorted(params.items())))
     if key in _cache:
         return _cache[key]
-    with _lock:
-        wait = 1.1 - (time.time() - _last[0])
-        if wait > 0:
-            time.sleep(wait)
-        r = httpx.get(f"{API}/{path}", params={**params, "fmt": "json"},
-                      headers={"User-Agent": config.MB_USER_AGENT}, timeout=20)
-        _last[0] = time.time()
+    # MusicBrainz answers 503 when it is busy or asked too fast: back off and retry.
+    for attempt in range(4):
+        with _lock:
+            wait = 1.1 - (time.time() - _last[0])
+            if wait > 0:
+                time.sleep(wait)
+            r = httpx.get(f"{API}/{path}", params={**params, "fmt": "json"},
+                          headers={"User-Agent": config.MB_USER_AGENT}, timeout=20)
+            _last[0] = time.time()
+        if r.status_code not in (429, 503) or attempt == 3:
+            break
+        time.sleep(2 * (attempt + 1))
     r.raise_for_status()
     data = r.json()
     if len(_cache) > 500:

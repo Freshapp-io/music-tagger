@@ -4,7 +4,7 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const fmtSize = (b) => b > 1e9 ? (b / 1e9).toFixed(1) + " Go" : (b / 1e6).toFixed(0) + " Mo";
+const fmtSize = (b) => b >= 1e9 ? (b / 1e9).toFixed(1) + " Go" : b >= 1e6 ? (b / 1e6).toFixed(0) + " Mo" : b > 0 ? Math.max(1, Math.round(b / 1e3)) + " Ko" : "0 Ko";
 const fmtDur = (s) => { s = Math.round(s || 0); const m = Math.floor(s / 60); return `${m}:${String(s % 60).padStart(2, "0")}`; };
 const fold = (s) => String(s ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^\w]+/g, " ").trim();
 
@@ -224,7 +224,7 @@ async function loadList(view) {
   const box = $("#list");
   if (!box) return;
   if (!data.items.length) {
-    box.innerHTML = `<div class="empty">${status && !status.tracks ? "Aucun fichier : lancez un scan depuis le tableau de bord." : "Rien à corriger ici 🎉"}</div>`;
+    box.innerHTML = `<div class="empty">${status && !status.tracks ? "Aucun fichier : lancez un scan depuis le tableau de bord." : "Rien à corriger ici"}</div>`;
     renderBatch(view, data.total);
     return;
   }
@@ -688,7 +688,7 @@ async function mbMatch(panel, dir, tracks, releaseId, onApplied, editor) {
         <td class="small mono">${esc(byPath[m.path].filename)}<div class="muted">${esc(byPath[m.path].title || "")}</div></td>
         <td class="small">${fmtDur(byPath[m.path].duration)}</td>
         <td><select class="map" style="width:100%"><option value="">— ne pas modifier —</option>${rel.tracks.map((_, i) => opt(i, m.index)).join("")}</select></td>
-        <td class="small ${m.score >= 1 ? "conf-high" : m.score >= 0.7 ? "conf-medium" : "conf-low"}">${m.index === null ? "—" : m.score}</td>
+        <td class="small ${m.score >= 1 ? "conf-high" : m.score >= 0.7 ? "conf-medium" : "conf-low"}" title="Correspondance titre + durée">${m.index === null ? "—" : Math.round(Math.min(m.score, 1) * 100) + " %"}</td>
       </tr>`).join("")}</tbody></table>
     <div class="actions">
       <label><input type="checkbox" class="mb-cover" ${rel.cover ? "checked" : "disabled"}> Intégrer la pochette dans les fichiers qui n'en ont pas ${rel.cover ? "" : "(indisponible)"}</label>
@@ -718,7 +718,7 @@ async function mbMatch(panel, dir, tracks, releaseId, onApplied, editor) {
 
 // ------------------------------------------------------------------ review
 const review = { kind: null, label: "", items: [], idx: 0, status: {}, returnTo: "#/" };
-const REVIEW_STATUS = { done: "✓ validé", saved: "💾 enregistré", skip: "→ passé", ignore: "⊘ ne plus proposer" };
+const REVIEW_STATUS = { done: "✓ validé", saved: "✎ enregistré", skip: "→ passé", ignore: "⊘ ne plus proposer" };
 
 async function startReview(kind, label, items, returnTo) {
   if (!items.length) return toast("Rien à revoir avec ce filtre");
@@ -755,7 +755,7 @@ async function renderReview(main) {
       <div class="review-top">
         <b>Revue — ${esc(review.label)}</b>
         <span class="muted">${i + 1} / ${n}</span>
-        <span class="small muted">✓ ${c.done} · 💾 ${c.saved} · → ${c.skip} · ⊘ ${c.ignore}</span>
+        <span class="small muted">✓ ${c.done} · ✎ ${c.saved} · → ${c.skip} · ⊘ ${c.ignore}</span>
         ${st ? `<span class="chip">${REVIEW_STATUS[st]}</span>` : ""}
         <span class="grow"></span>
         <a href="${review.returnTo}" class="small">Quitter la revue</a>
@@ -766,7 +766,7 @@ async function renderReview(main) {
         <span class="grow"></span>
         <button id="rv-ignore" title="Ctrl+I">Ne plus proposer</button>
         <button id="rv-skip" title="Ctrl+→">Passer (ne pas traiter) →</button>
-        ${review.kind === "duplicate" ? "" : `<button id="rv-save" title="Ctrl+S — enregistre sans passer au suivant">💾 Enregistrer</button>`}
+        ${review.kind === "duplicate" ? "" : `<button id="rv-save" title="Ctrl+S — enregistre sans passer au suivant">✎ Enregistrer</button>`}
         <button class="primary" id="rv-ok" title="Ctrl+Entrée">${review.kind === "duplicate" ? "✓ Garder la version choisie et suivant" : "✓ Valider et suivant"}</button>
       </div>
     </div>
@@ -1038,7 +1038,7 @@ function drawGenres() {
   const rows = genreRows();
   const box = $("#g-list");
   if (!box) return;
-  if (!rows.length) { box.innerHTML = `<div class="empty">Rien ici 🎉</div>`; drawGenreBatch(rows); return; }
+  if (!rows.length) { box.innerHTML = `<div class="empty">Rien ici</div>`; drawGenreBatch(rows); return; }
   const choiceOf = (r) => genreState.choice[r.raw] ?? r.proposal;
   const options = (r) => {
     const sel = choiceOf(r);
@@ -1145,6 +1145,12 @@ async function renderHistory(main) {
 }
 
 // -------------------------------------------------------------------- boot
+function syncThemeButtons() {
+  const t = window.fmtTheme ? window.fmtTheme.get() : "auto";
+  for (const b of $$("[data-theme-choice]")) b.setAttribute("aria-pressed", String(b.dataset.themeChoice === t));
+}
+for (const b of $$("[data-theme-choice]")) b.onclick = () => { window.fmtTheme.set(b.dataset.themeChoice); syncThemeButtons(); };
+syncThemeButtons();
 $("#logout").onclick = () => api("POST", "/api/logout").finally(() => location.replace("/login"));
 api("GET", "/api/genres/canon").then((r) => { genreCanon = r.canon; }).catch(() => {});
 refreshStatus().then(render);

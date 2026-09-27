@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Freshapp.io Music Tagger">
+  <rect x="3" y="3" width="506" height="506" rx="114" fill="#fff" stroke="#DDE6E3" stroke-width="6"/>
+  <!-- three sorted cards, brand colours -->
+  <rect x="112" y="96"  width="200" height="170" rx="20" fill="#61C424" transform="rotate(-14 212 181)"/>
+  <rect x="160" y="78"  width="200" height="170" rx="20" fill="#1FC8AC" transform="rotate(-2 260 163)"/>
+  <rect x="208" y="96"  width="200" height="170" rx="20" fill="#1E6FA5" transform="rotate(11 308 181)"/>
+  <!-- folder -->
+  <path d="M84 206 Q84 184 106 184 L196 184 Q212 184 221 198 L233 216 L406 216 Q428 216 428 238 L428 406 Q428 428 406 428 L106 428 Q84 428 84 406 Z" fill="#123F63"/>
+  <!-- note -->
+  <g fill="#1FC8AC" transform="translate(252 330)">
+    <ellipse cx="-30" cy="44" rx="38" ry="28" transform="rotate(-22 -30 44)"/>
+    <rect x="-6" y="-84" width="17" height="130" rx="8.5"/>
+    <path d="M9 -84 C 37 -71 67 -54 67 -15 C 67 0 61 11 52 19 C 54 -11 35 -28 9 -33 Z"/>
+  </g>
+</svg>
