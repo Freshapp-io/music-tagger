@@ -35,7 +35,8 @@ const FR = {
   "confirm.dupes": "Déplacer {n} dossier(s) dans la corbeille et garder {k} version(s) ?\n(annulable depuis l'historique tant que la corbeille n'est pas vidée)",
   "confirm.genres.mb": "Interroger MusicBrainz pour les artistes dont le genre est inconnu ? (≈ 1 s par artiste, en tâche de fond ; les fichiers ne sont pas modifiés)",
   "confirm.autotag": "Analyser {n} dossier(s) ({label}) sur MusicBrainz ?\n\nRecherche par durées et par nom, puis note de confiance pour chaque album.\nDurée estimée : ~{min} min (MusicBrainz limite à 1 requête / s). Aucun fichier n'est modifié à cette étape.",
-  "confirm.autotag.apply": "Tagger {n} dossier(s) avec MusicBrainz ?\n\nAlbum artist : {aa}\nGenre vide complété : {genre}\nPochette : {cover}\nSeulement les champs vides : {empty}",
+  "confirm.autotag.apply": "Tagger {n} dossier(s) avec MusicBrainz ?\n\nAlbum artist : {aa}\nGenre vide complété : {genre}\nPochette : {cover}\nSeulement les champs vides : {empty}\nNombre de pistes respecté : {strict}",
+  "hint.strict": "Rejeter toute proposition dont le disque n'a pas exactement le même nombre de pistes que le dossier (compté par disque : un dossier « CD 2 » peut correspondre au 2e disque d'un coffret).",
 };
 
 const EN = {
@@ -59,7 +60,11 @@ const EN = {
   "confirm.dupes": "Move {n} folder(s) to the trash and keep {k} version(s)?\n(can be undone from the history until the trash is emptied)",
   "confirm.genres.mb": "Ask MusicBrainz for the genre of artists whose genre is unknown? (≈ 1 s per artist, in the background; files are not changed)",
   "confirm.autotag": "Analyse {n} folder(s) ({label}) on MusicBrainz?\n\nLookup by track lengths and by name, then a confidence score for each album.\nEstimated time: ~{min} min (MusicBrainz allows 1 request / s). No file is changed at this step.",
-  "confirm.autotag.apply": "Tag {n} folder(s) from MusicBrainz?\n\nAlbum artist: {aa}\nEmpty genre filled in: {genre}\nCover art: {cover}\nEmpty fields only: {empty}",
+  "confirm.autotag.apply": "Tag {n} folder(s) from MusicBrainz?\n\nAlbum artist: {aa}\nEmpty genre filled in: {genre}\nCover art: {cover}\nEmpty fields only: {empty}\nTrack count respected: {strict}",
+  "hint.strict": "Reject any proposal whose disc does not have exactly as many tracks as the folder (counted per disc: a “CD 2” folder can match the 2nd disc of a box set).",
+  "Respecter le nombre de pistes": "Respect the track count",
+  "rejeté : nombre de pistes": "rejected: track count",
+  "{n} pistes (dossier : {k})": "{n} tracks (folder: {k})",
 
   // ---- short texts
   "Go": "GB", "Mo": "MB", "Ko": "KB",
@@ -330,6 +335,7 @@ const EN_SERVER = {
   "pas de genre": "no genre",
   "aucun fichier": "no files",
   "aucune édition trouvée (ni par les durées, ni par le nom)": "no release found (neither by lengths nor by name)",
+  "nombre de pistes différent (réanalyser pour chercher une autre édition)": "different track count (analyse again to look for another release)",
   "Une tâche est en cours, réessayez quand elle sera terminée.": "A task is running, try again when it has finished.",
   "Authentification requise": "Login required",
   "Identifiant ou mot de passe incorrect": "Wrong user name or password",
@@ -342,6 +348,7 @@ const EN_PATTERNS = [
   [/^artiste principal sur (\d+)\/(\d+) titres$/, "main artist on $1/$2 tracks"],
   [/^compilation \((\d+) artistes différents\)$/, "compilation ($1 different artists)"],
   [/^d'après « (.*) »$/, "from “$1”"],
+  [/^aucune édition avec (\d+) pistes$/, "no release with $1 tracks"],
   [/^Parcours : (.*)$/, "Walking: $1"],
   [/^Lecture : (.*)$/, "Reading: $1"],
   [/^Correction : (.*)$/, "Fixing: $1"],

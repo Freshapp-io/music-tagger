@@ -20,14 +20,23 @@ def _get(path, params):
     if key in _cache:
         return _cache[key]
     # MusicBrainz answers 503 when it is busy or asked too fast: back off and retry.
+    # Timeouts and dropped connections are retried as well.
     for attempt in range(4):
-        with _lock:
-            wait = 1.1 - (time.time() - _last[0])
-            if wait > 0:
-                time.sleep(wait)
-            r = httpx.get(f"{API}/{path}", params={**params, "fmt": "json"},
-                          headers={"User-Agent": config.MB_USER_AGENT}, timeout=20)
-            _last[0] = time.time()
+        try:
+            with _lock:
+                wait = 1.1 - (time.time() - _last[0])
+                if wait > 0:
+                    time.sleep(wait)
+                try:
+                    r = httpx.get(f"{API}/{path}", params={**params, "fmt": "json"},
+                                  headers={"User-Agent": config.MB_USER_AGENT}, timeout=20)
+                finally:
+                    _last[0] = time.time()
+        except (httpx.TimeoutException, httpx.TransportError):
+            if attempt == 3:
+                raise
+            time.sleep(2 * (attempt + 1))
+            continue
         if r.status_code not in (429, 503) or attempt == 3:
             break
         time.sleep(2 * (attempt + 1))

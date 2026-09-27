@@ -19,7 +19,7 @@ Application web (Docker) pour nettoyer les tags d'une grosse bibliothèque MP3,
 typiquement servie par [Navidrome](https://www.navidrome.org/).
 
 - **Nom technique** : `freshapp-music-tagger`
-- **Version** : 1.6.2
+- **Version** : 1.7.0
 - **Auteur** : FreshApp.io
 
 ### Fonctionnement
@@ -52,7 +52,8 @@ nom du dossier, titres et numéros de piste déduits des noms de fichiers.
   présélectionnés ; un album est dit *ambigu* si un autre album obtient une note
   proche, et n'est alors jamais présélectionné. Options : album artist de
   MusicBrainz, du dossier ou imposé, genre vide complété, pochette, ne remplir que
-  les champs vides.
+  les champs vides, **respecter le nombre de pistes** (rejette toute proposition
+  dont le disque n'a pas exactement le nombre de pistes du dossier).
 - **Piste par piste** : pour les compilations, chaque morceau se tague et
   s'enregistre séparément, avec suggestion depuis le nom de fichier ou recherche
   du morceau sur MusicBrainz.
@@ -209,7 +210,7 @@ Dockerised web app to clean up the tags of a large MP3 library, typically
 served by [Navidrome](https://www.navidrome.org/).
 
 - **Technical name**: `freshapp-music-tagger`
-- **Version**: 1.6.2
+- **Version**: 1.7.0
 - **Author**: FreshApp.io
 
 ### How it works
@@ -241,7 +242,9 @@ the folder name, titles and track numbers derived from file names.
   titles, names). Albums above the chosen minimum score are pre-selected; an
   album is *ambiguous* when another album scores close to it, and is then never
   pre-selected. Options: album artist from MusicBrainz, from the folder or
-  forced, empty genre filled in, cover art, fill empty fields only.
+  forced, empty genre filled in, cover art, fill empty fields only, **respect
+  the track count** (rejects any proposal whose disc does not have exactly the
+  folder's number of tracks).
 - **Track by track**: for compilations, each track is tagged and saved on its
   own, with a suggestion from the file name or a MusicBrainz track search.
 - **MusicBrainz**: album search by name **and by track lengths** (like

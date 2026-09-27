@@ -149,9 +149,12 @@ def status():
             if r["dup_group"] and "duplicate" not in ign.get(r["dir"], ()):
                 dup_groups.add(r["dup_group"])
         counts["duplicate_groups"] = len(dup_groups)
-        min_score = db.get_meta(c, "autotag_options", autotag.DEFAULT_OPTIONS).get("min_score", 95)
-        counts["autotag_ready"] = c.execute(
-            "SELECT COUNT(*) FROM autotag WHERE status='ok' AND score >= ?", (min_score,)).fetchone()[0]
+        opts = {**autotag.DEFAULT_OPTIONS, **db.get_meta(c, "autotag_options", {})}
+        ready = 0
+        for r in c.execute("SELECT status, score, release_id, details FROM autotag WHERE status <> 'applied'"):
+            st, score, _, _ = autotag.effective(dict(r), opts["strict_count"])
+            ready += st == "ok" and score >= opts["min_score"]
+        counts["autotag_ready"] = ready
         last_scan = db.get_meta(c, "last_scan")
     j = jobs.current()
     return {
@@ -510,7 +513,9 @@ def autotag_list():
     for r in rows:
         d = dict(r)
         d["details"] = json.loads(d["details"] or "{}")
-        d["details"].pop("mapping", None)
+        d["n_mapped"] = len(d["details"].pop("mapping", None) or [])
+        if d["details"].get("strict"):
+            d["details"]["strict"]["details"].pop("mapping", None)
         d["issues"] = json.loads(d["issues"]) if d["issues"] else []
         items.append(d)
     return {"options": {**autotag.DEFAULT_OPTIONS, **options}, "items": items}

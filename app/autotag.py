@@ -18,7 +18,7 @@ MAX_CANDIDATES = 4
 AMBIGUITY_GAP = 5          # two different albums closer than this: do not auto-apply
 DEFAULT_OPTIONS = {
     "min_score": 95, "albumartist_mode": "mb", "albumartist_value": "",
-    "fill_genre": True, "cover": True, "only_empty": False,
+    "fill_genre": True, "cover": True, "only_empty": False, "strict_count": False,
 }
 
 
@@ -75,6 +75,7 @@ def evaluate(files, rel, hints, via_toc=False):
     if mapped and len(files) < len(medium):
         score *= 0.95        # incomplete album: tags are right, but be careful
     return round(score, 1), {
+        "medium_tracks": len(medium),
         "coverage": round(coverage, 3),
         "durations": round(parts["durations"] * 100) if "durations" in parts else None,
         "titles": round(parts["titles"] * 100) if "titles" in parts else None,
@@ -102,7 +103,9 @@ def analyse_dir(rel_dir):
     if all(durations):
         candidates += [(r["id"], True) for r in musicbrainz.by_durations(durations)[:MAX_CANDIDATES]]
     if hints["album"] or hints["artist"]:
-        for r in musicbrainz.search(hints["artist"] or "", hints["album"] or "", len(files)):
+        found = musicbrainz.search(hints["artist"] or "", hints["album"] or "", len(files))
+        found.sort(key=lambda r: (r["tracks"] != len(files), -r["score"]))   # same track count first
+        for r in found:
             if r["tracks"] >= len(files) and r["score"] >= 80 and r["id"] not in {c[0] for c in candidates}:
                 candidates.append((r["id"], False))
             if len(candidates) >= MAX_CANDIDATES + 2:
@@ -118,8 +121,26 @@ def analyse_dir(rel_dir):
         score, details = evaluate(files, rel, hints, via_toc)
         scored.append((score, rel, details))
     scored.sort(key=lambda x: (-x[0], x[2]["avg_gap"] if x[2]["avg_gap"] is not None else 99))
-    best_score, best, details = scored[0]
+    status, best_score, best, details = _decide(scored)
+    details["hints"] = hints
+    details["candidates"] = [{"id": r["id"], "title": r["title"], "artist": r["albumartist"],
+                              "date": r["date"], "score": s, "tracks": d["medium_tracks"]} for s, r, d in scored]
+    # Same decision restricted to releases whose disc has exactly as many tracks
+    # as the folder: used when the "respect the track count" option is on.
+    exact = [x for x in scored if x[2]["medium_tracks"] == len(files)]
+    if exact:
+        s_status, s_score, s_best, s_details = _decide(exact)
+        details["strict"] = {"status": s_status, "score": s_score, "release_id": s_best["id"], "details": s_details}
+    else:
+        details["strict"] = {"status": "rejected", "score": 0, "release_id": None,
+                             "details": {"reason": f"aucune édition avec {len(files)} pistes"}}
+    return {"status": status, "score": best_score, "release_id": best["id"], "details": details}
 
+
+def _decide(scored):
+    """Best of the scored candidates, flagged ambiguous / partial when needed."""
+    best_score, best, details = scored[0]
+    details = dict(details)
     # Another *album* (different release group and title) almost as good -> ambiguous.
     rival = next((s for s in scored[1:] if s[1]["release_group_id"] != best["release_group_id"]
                   and norm_album(s[1]["title"]) != norm_album(best["title"])), None)
@@ -130,12 +151,27 @@ def analyse_dir(rel_dir):
                             "artist": rival[1]["albumartist"], "score": rival[0]}
     if details["coverage"] < 1:
         status = "partial"
-    details["hints"] = hints
     details["release"] = {"id": best["id"], "title": best["title"], "artist": best["albumartist"],
                           "date": best["date"], "tracks": len(best["tracks"])}
-    details["candidates"] = [{"id": r["id"], "title": r["title"], "artist": r["albumartist"],
-                              "date": r["date"], "score": s} for s, r, _ in scored]
-    return {"status": status, "score": best_score, "release_id": best["id"], "details": details}
+    return status, best_score, best, details
+
+
+def effective(row, strict_count):
+    """(status, score, release_id, details) of a stored analysis, for the given
+    option. Analyses made before the option existed fall back on the release
+    total when it equals the folder's track count."""
+    details = row["details"] if isinstance(row["details"], dict) else json.loads(row["details"] or "{}")
+    if row["status"] in ("applied", "none", "error") or not strict_count:
+        return row["status"], row["score"], row["release_id"], details
+    strict = details.get("strict")
+    if strict:
+        common = {k: v for k, v in details.items() if k in ("hints", "candidates", "strict")}
+        return strict["status"], strict["score"], strict["release_id"], {**common, **strict["details"]}
+    rel = details.get("release") or {}
+    n = len(details.get("mapping") or [])
+    if rel and n and rel.get("tracks") == n:
+        return row["status"], row["score"], row["release_id"], details
+    return "rejected", 0, None, {**details, "reason": "nombre de pistes différent (réanalyser pour chercher une autre édition)"}
 
 
 def analyse(job, dirs, force=False):
@@ -165,7 +201,7 @@ def apply(job, dirs, options):
     opts = {**DEFAULT_OPTIONS, **(options or {})}
     with db.session() as c:
         db.set_meta(c, "autotag_options", opts)
-        rows = {r["dir"]: dict(r) for r in c.execute("SELECT * FROM autotag WHERE status IN ('ok','ambiguous','partial')")}
+        rows = {r["dir"]: dict(r) for r in c.execute("SELECT * FROM autotag WHERE status <> 'applied'")}
     todo = [d for d in dirs if d in rows]
     job.total = len(todo)
     infer = None
@@ -175,10 +211,12 @@ def apply(job, dirs, options):
     touched, n_files = set(), 0
     for d in todo:
         job.step(f"Tag auto : {d}")
-        row = rows[d]
+        status, _, release_id, details = effective(rows[d], opts["strict_count"])
+        if status not in ("ok", "ambiguous", "partial") or not release_id:
+            job.error(d, details.get("reason") or status)
+            continue
         try:
-            details = json.loads(row["details"])
-            rel = musicbrainz.release(row["release_id"])
+            rel = musicbrainz.release(release_id)
             changes = musicbrainz.changes_for(rel, details["mapping"])
             with db.session() as c:
                 current = {t["path"]: t for t in fixes.tracks_of(c, d)}

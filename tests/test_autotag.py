@@ -66,3 +66,29 @@ def test_lengths_only_on_a_short_release_is_capped(library, job, monkeypatch):
         [dict(r) for r in db.connect().execute("SELECT * FROM tracks WHERE dir='xx' ORDER BY filename")], rel, {})
     assert details["titles"] is None and details["names"] is None
     assert score <= 76
+
+
+BONUS = KOB + [("Flamenco Sketches (alt. take)", 30)]
+
+
+def test_strict_track_count_prefers_exact_release(library, job, monkeypatch):
+    deluxe = fake_release("deluxe", "Kind of Blue (Legacy)", "Miles Davis", "rg1", BONUS)   # 6 tracks
+    plain = fake_release("plain", "Kind of Blue", "Miles Davis", "rg1", KOB)                  # 5 tracks
+    setup(library, job, monkeypatch, {"deluxe": deluxe, "plain": plain}, ["deluxe", "plain"])
+    res = autotag.analyse_dir("Miles Davis - Kind of Blue")
+    strict = res["details"]["strict"]
+    assert strict["release_id"] == "plain" and strict["status"] == "ok"
+    assert res["details"]["candidates"][0]["tracks"] in (5, 6)
+
+
+def test_strict_rejects_when_no_release_has_the_count(library, job, monkeypatch):
+    deluxe = fake_release("deluxe", "Kind of Blue (Legacy)", "Miles Davis", "rg1", BONUS)
+    setup(library, job, monkeypatch, {"deluxe": deluxe}, ["deluxe"])
+    autotag.analyse(job, ["Miles Davis - Kind of Blue"])
+    with db.session() as c:
+        row = dict(c.execute("SELECT * FROM autotag").fetchone())
+    assert autotag.effective(row, False)[0] == "ok"          # option off: still proposed
+    assert autotag.effective(row, True)[0] == "rejected"     # option on: rejected
+    job.errors.clear()
+    autotag.apply(job, ["Miles Davis - Kind of Blue"], {"strict_count": True})
+    assert job.errors and tagger.read(str(library / "Miles Davis - Kind of Blue/01 - So What.mp3"))["album"] is None

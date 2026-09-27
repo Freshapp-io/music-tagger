@@ -1184,7 +1184,20 @@ function applyGenres(items) {
 const AT_STATUS = {
   ok: [t("à appliquer"), "g-clean"], ambiguous: [t("ambigu"), "g-weird"], partial: [t("incomplet"), "g-weird"],
   none: [t("aucun résultat"), "g-empty"], error: [t("erreur"), "g-empty"], applied: [t("appliqué"), "g-clean"],
+  rejected: [t("rejeté : nombre de pistes"), "g-empty"],
 };
+const AT_INACTIVE = ["none", "error", "applied", "rejected"];
+
+/** Proposal to show / apply for a row, depending on the "respect the track count" option. */
+function atView(r) {
+  const o = atState.options;
+  if (["applied", "none", "error"].includes(r.status) || !o.strict_count) return { status: r.status, score: r.score, d: r.details };
+  const strict = r.details.strict;
+  if (strict) return { status: strict.status, score: strict.score, d: { hints: r.details.hints, ...strict.details } };
+  const rel = r.details.release;          // analysis made before the option existed
+  if (rel && rel.tracks === r.n_mapped) return { status: r.status, score: r.score, d: r.details };
+  return { status: "rejected", score: 0, d: { reason: "nombre de pistes différent (réanalyser pour chercher une autre édition)" } };
+}
 const AT_FILTERS = { ready: t("Prêts (≥ note min.)"), below: t("Sous le seuil"), doubt: t("Ambigus / incomplets"), none: t("Sans résultat"), applied: t("Appliqués"), all: t("Tous") };
 const atState = { filter: "ready", selected: null, options: null, data: null, sig: "" };
 
@@ -1199,7 +1212,7 @@ async function startAutotag(dirs, label) {
 }
 
 function atDefaultSelection(items, o) {
-  return new Set(items.filter((r) => r.status === "ok" && r.score >= o.min_score).map((r) => r.dir));
+  return new Set(items.filter((r) => { const v = atView(r); return v.status === "ok" && v.score >= o.min_score; }).map((r) => r.dir));
 }
 
 async function renderAutotag(main) {
@@ -1225,6 +1238,7 @@ async function renderAutotag(main) {
       <label><input type="checkbox" id="at-genre" ${o.fill_genre ? "checked" : ""}> ${t("Compléter le genre vide (genre habituel de l'artiste)")}</label>
       <label><input type="checkbox" id="at-cover" ${o.cover ? "checked" : ""}> ${t("Intégrer la pochette si absente")}</label>
       <label><input type="checkbox" id="at-empty" ${o.only_empty ? "checked" : ""}> ${t("Ne remplir que les champs vides")}</label>
+      <label title="${esc(t("hint.strict"))}"><input type="checkbox" id="at-strict" ${o.strict_count ? "checked" : ""}> ${t("Respecter le nombre de pistes")}</label>
     </div>
     <div class="toolbar"><div class="seg" id="at-filter">${Object.entries(AT_FILTERS).map(([k, v]) => `<button data-f="${k}">${v}</button>`).join("")}</div></div>
     <div id="at-batch"></div>
@@ -1234,11 +1248,12 @@ async function renderAutotag(main) {
     o.albumartist_mode = ($('input[name="at-aa"]:checked') || {}).value || "mb";
     o.albumartist_value = $("#at-aa-value").value;
     o.fill_genre = $("#at-genre").checked; o.cover = $("#at-cover").checked; o.only_empty = $("#at-empty").checked;
+    o.strict_count = $("#at-strict").checked;
   };
   for (const el of $$(".at-options input")) el.onchange = () => {
-    const before = o.min_score;
+    const before = [o.min_score, o.strict_count].join();
     readOptions();
-    if (o.min_score !== before) atState.selected = atDefaultSelection(data.items, o);
+    if ([o.min_score, o.strict_count].join() !== before) atState.selected = atDefaultSelection(data.items, o);
     drawAutotag();
   };
   for (const b of $$("#at-filter button")) b.onclick = () => { atState.filter = b.dataset.f; drawAutotag(); };
@@ -1248,11 +1263,12 @@ async function renderAutotag(main) {
 function atRows() {
   const { data, options: o, filter } = atState;
   return data.items.filter((r) => {
-    if (filter === "ready") return r.status === "ok" && r.score >= o.min_score;
-    if (filter === "below") return r.status === "ok" && r.score < o.min_score;
-    if (filter === "doubt") return r.status === "ambiguous" || r.status === "partial";
-    if (filter === "none") return r.status === "none" || r.status === "error";
-    if (filter === "applied") return r.status === "applied";
+    const v = atView(r);
+    if (filter === "ready") return v.status === "ok" && v.score >= o.min_score;
+    if (filter === "below") return v.status === "ok" && v.score < o.min_score;
+    if (filter === "doubt") return v.status === "ambiguous" || v.status === "partial";
+    if (filter === "none") return ["none", "error", "rejected"].includes(v.status);
+    if (filter === "applied") return v.status === "applied";
     return true;
   });
 }
@@ -1269,23 +1285,25 @@ function drawAutotag() {
   box.innerHTML = `<table><thead><tr><th class="check"><input type="checkbox" id="at-all"></th>
       <th>${t("Dossier")}</th><th>${t("Proposition MusicBrainz")}</th><th>${t("Note")}</th><th>${t("Détail")}</th><th>${t("Statut")}</th></tr></thead><tbody>
     ${rows.map((r) => {
-      const d = r.details, rel = d.release;
-      const cls = r.score >= atState.options.min_score ? "conf-high" : r.score >= 80 ? "conf-medium" : "conf-low";
+      const v = atView(r), d = v.d, rel = v.status === "rejected" ? null : d.release;
+      const cls = v.score >= atState.options.min_score ? "conf-high" : v.score >= 80 ? "conf-medium" : "conf-low";
+      const discTracks = d.medium_tracks || (rel && rel.tracks);
+      const countCls = discTracks && discTracks !== r.n_tracks ? "conf-medium" : "";
       return `<tr data-dir="${esc(r.dir)}">
-        <td class="check"><input type="checkbox" class="at-sel" ${atState.selected.has(r.dir) ? "checked" : ""} ${["none", "error", "applied"].includes(r.status) ? "disabled" : ""}></td>
+        <td class="check"><input type="checkbox" class="at-sel" ${atState.selected.has(r.dir) ? "checked" : ""} ${AT_INACTIVE.includes(v.status) ? "disabled" : ""}></td>
         <td><a href="#" class="open dir">${esc(r.dir)}</a><div class="small muted">${t("{n} pistes", { n: r.n_tracks || "?" })}</div></td>
         <td>${rel ? `<a href="https://musicbrainz.org/release/${esc(rel.id)}" target="_blank" rel="noopener">${esc(rel.artist)} — ${esc(rel.title)}${newWindow()}</a>
-          <div class="small muted">${esc(rel.date || "")} · ${t("{n} pistes", { n: rel.tracks })} ${d.via_durations ? `<span class="chip g-clean">${t("durées ✓")}</span>` : ""}</div>` : `<span class="muted small">${esc(tr(d.reason || ""))}</span>`}</td>
-        <td><b class="${cls}">${r.score ? Math.round(r.score) : "—"}</b>
-          ${r.score ? `<div class="at-bar"><div style="width:${Math.min(100, r.score)}%"></div></div>` : ""}</td>
+          <div class="small muted">${esc(rel.date || "")} · <span class="${countCls}">${t("{n} pistes (dossier : {k})", { n: discTracks, k: r.n_tracks })}</span> ${d.via_durations ? `<span class="chip g-clean">${t("durées ✓")}</span>` : ""}</div>` : `<span class="muted small">${esc(tr(d.reason || ""))}</span>`}</td>
+        <td><b class="${cls}">${v.score ? Math.round(v.score) : "—"}</b>
+          ${v.score ? `<div class="at-bar"><div style="width:${Math.min(100, v.score)}%"></div></div>` : ""}</td>
         <td class="small">${t("durées")} ${pct(d.durations)}${d.avg_gap !== null && d.avg_gap !== undefined ? ` (±${d.avg_gap} s, max ${d.max_gap} s)` : ""}<br>
           ${t("titres")} ${pct(d.titles)} · ${t("noms")} ${pct(d.names)}
           ${d.rival ? `<div class="conf-medium">${t("aussi proche :")} ${esc(d.rival.artist)} — ${esc(d.rival.title)} (${Math.round(d.rival.score)})</div>` : ""}</td>
-        <td><span class="chip ${AT_STATUS[r.status][1]}">${AT_STATUS[r.status][0]}</span></td>
+        <td><span class="chip ${AT_STATUS[v.status][1]}">${AT_STATUS[v.status][0]}</span></td>
       </tr>`;
     }).join("")}</tbody></table>`;
   $("#at-all").onchange = (e) => {
-    for (const r of rows) if (!["none", "error", "applied"].includes(r.status)) e.target.checked ? atState.selected.add(r.dir) : atState.selected.delete(r.dir);
+    for (const r of rows) if (!AT_INACTIVE.includes(atView(r).status)) e.target.checked ? atState.selected.add(r.dir) : atState.selected.delete(r.dir);
     drawAutotag();
   };
   for (const row of $$("tbody tr", box)) {
@@ -1297,8 +1315,8 @@ function drawAutotag() {
 }
 
 function drawAutotagBatch(rows) {
-  const sel = [...atState.selected].filter((d) => atState.data.items.some((r) => r.dir === d && !["none", "error", "applied"].includes(r.status)));
-  const risky = sel.filter((d) => { const r = atState.data.items.find((x) => x.dir === d); return r.status !== "ok" || r.score < atState.options.min_score; });
+  const sel = [...atState.selected].filter((d) => atState.data.items.some((r) => r.dir === d && !AT_INACTIVE.includes(atView(r).status)));
+  const risky = sel.filter((d) => { const v = atView(atState.data.items.find((x) => x.dir === d)); return v.status !== "ok" || v.score < atState.options.min_score; });
   $("#at-batch").innerHTML = `<div class="batchbar">
     <b>${t("{n} dossier(s) sélectionné(s)", { n: sel.length })}</b>
     ${risky.length ? `<span class="conf-medium small">${t("dont {n} sous le seuil ou ambigu(s)", { n: risky.length })}</span>` : ""}
@@ -1313,7 +1331,7 @@ function drawAutotagBatch(rows) {
     const o = atState.options;
     const yes = (b) => (b ? t("oui") : t("non"));
     const aa = o.albumartist_mode === "fixed" ? t("imposé « {v} »", { v: o.albumartist_value }) : o.albumartist_mode === "folder" ? t("artiste du dossier") : "MusicBrainz";
-    let msg = t("confirm.autotag.apply", { n: sel.length, aa, genre: yes(o.fill_genre), cover: yes(o.cover), empty: yes(o.only_empty) });
+    let msg = t("confirm.autotag.apply", { n: sel.length, aa, genre: yes(o.fill_genre), cover: yes(o.cover), empty: yes(o.only_empty), strict: yes(o.strict_count) });
     if (risky.length) msg += "\n\n⚠ " + t("{n} dossier(s) sous le seuil ou ambigu(s) inclus.", { n: risky.length });
     if (!confirm(msg + "\n\n" + t("Annulable depuis l'historique."))) return;
     run(async () => {

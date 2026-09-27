@@ -83,3 +83,18 @@ def test_match_picks_the_disc_whose_lengths_fit():
     files = [f(f"x/0{i}.mp3", f"0{i}.mp3", None, str(i), d) for i, d in enumerate([409, 121, 251], 1)]
     got = [tracks[m["index"]]["disc"] for m in musicbrainz.match(files, rel)]
     assert got == [2, 2, 2]
+
+
+def test_retries_after_a_timeout(monkeypatch):
+    import httpx
+    calls = []
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        calls.append(url)
+        if len(calls) == 1:
+            raise httpx.ReadTimeout("The read operation timed out")
+        return httpx.Response(200, json={"recordings": []}, request=httpx.Request("GET", url))
+    monkeypatch.setattr(musicbrainz.httpx, "get", fake_get)
+    monkeypatch.setattr(musicbrainz.time, "sleep", lambda s: None)
+    musicbrainz._cache.clear()
+    assert musicbrainz.search_recordings("X", "Y") == [] and len(calls) == 2
