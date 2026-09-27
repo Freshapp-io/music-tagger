@@ -12,7 +12,7 @@ def test_everything_private_until_login():
         assert r.status_code == 303 and r.headers["location"] == "/login"
         assert c.get("/docs", follow_redirects=False).status_code == 303
         # the login page and its assets stay reachable
-        for url in ("/login", "/healthz", "/static/style.css", "/static/login.js", "/static/theme.js", "/static/brand/icon.svg", "/static/brand/manifest.webmanifest"):
+        for url in ("/login", "/healthz", "/static/style.css", "/static/login.js", "/static/theme.js", "/static/i18n.js", "/static/brand/icon.svg", "/static/brand/manifest.webmanifest"):
             assert c.get(url).status_code == 200, url
         assert c.get("/static/app.js", follow_redirects=False).status_code == 303
 

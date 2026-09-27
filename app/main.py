@@ -232,6 +232,18 @@ def album(dir: str):
             others = [_album(r) for r in c.execute(
                 "SELECT * FROM albums WHERE dup_group=? AND dir<>?", (a["dup_group"], dir))]
     alb = _album(a, ign)
+    # Context: the folder holding this album and the other albums it contains.
+    parent = os.path.dirname(dir)
+    siblings = []
+    if parent:
+        with db.session() as c:
+            rows = c.execute("SELECT dir, n_tracks, issues FROM albums WHERE dir LIKE ? ESCAPE '\\' AND dir <> ?",
+                             (parent.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "/%", dir)).fetchall()
+        for r in rows:
+            rest = r["dir"][len(parent) + 1:]
+            siblings.append({"dir": r["dir"], "name": rest, "n_tracks": r["n_tracks"],
+                             "issues": json.loads(r["issues"]), "nested": "/" in rest})
+        siblings.sort(key=lambda x: (x["nested"], x["name"].lower()))
     guesses = fixes.track_guesses(dir, tracks, alb["suggestion"].get("albumartist"))
     for t in tracks:
         t["guess"] = guesses.get(t["path"], {})
@@ -241,7 +253,8 @@ def album(dir: str):
                        if e.is_file() and not e.name.lower().endswith(config.AUDIO_EXT))
     except OSError:
         pass
-    return {"album": alb, "tracks": tracks, "duplicates": others, "other_files": extra}
+    return {"album": alb, "tracks": tracks, "duplicates": others, "other_files": extra,
+            "library": config.MUSIC_ROOT.name or "/", "siblings": siblings[:80], "n_siblings": len(siblings)}
 
 
 class SaveReq(BaseModel):

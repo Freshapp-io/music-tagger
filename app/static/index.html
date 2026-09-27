@@ -12,6 +12,7 @@
   <link rel="apple-touch-icon" href="/static/brand/apple-touch-icon.png">
   <meta name="color-scheme" content="light dark">
   <script src="/static/theme.js"></script>
+  <script src="/static/i18n.js"></script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -20,30 +21,35 @@
       <img src="/static/brand/icon.svg" alt="">
       <span class="brand-name"><span class="fa"><span class="g">Fresh</span><span class="t">app</span><span class="i">.io</span></span><span class="app">Music Tagger</span></span>
     </a>
-    <nav id="nav">
-      <a href="#/" data-view="dashboard">Tableau de bord</a>
-      <a href="#/untagged" data-view="untagged">Non taggués <span class="count" data-count="untagged"></span></a>
-      <a href="#/various" data-view="various">Various Artists <span class="count" data-count="various"></span></a>
-      <a href="#/inconsistent" data-view="inconsistent">Tags incohérents <span class="count" data-count="inconsistent"></span></a>
-      <a href="#/duplicates" data-view="duplicates">Doublons <span class="count" data-count="duplicate_groups"></span></a>
-      <a href="#/autotag" data-view="autotag">Tag auto <span class="count" data-count="autotag_ready"></span></a>
-      <a href="#/genres" data-view="genres">Genres</a>
-      <a href="#/all" data-view="all">Tous les dossiers</a>
-      <a href="#/history" data-view="history">Historique</a>
+    <nav id="nav" data-i18n-aria-label="Menu principal">
+      <a href="#/" data-view="dashboard"><span data-i18n="Tableau de bord">Tableau de bord</span></a>
+      <a href="#/untagged" data-view="untagged"><span data-i18n="Non taggués">Non taggués</span> <span class="count" data-count="untagged"></span></a>
+      <a href="#/various" data-view="various"><span data-i18n="Various Artists">Various Artists</span> <span class="count" data-count="various"></span></a>
+      <a href="#/inconsistent" data-view="inconsistent"><span data-i18n="Tags incohérents">Tags incohérents</span> <span class="count" data-count="inconsistent"></span></a>
+      <a href="#/duplicates" data-view="duplicates"><span data-i18n="Doublons">Doublons</span> <span class="count" data-count="duplicate_groups"></span></a>
+      <a href="#/autotag" data-view="autotag"><span data-i18n="Tag auto">Tag auto</span> <span class="count" data-count="autotag_ready"></span></a>
+      <a href="#/genres" data-view="genres"><span data-i18n="Genres">Genres</span></a>
+      <a href="#/all" data-view="all"><span data-i18n="Tous les dossiers">Tous les dossiers</span></a>
+      <a href="#/history" data-view="history"><span data-i18n="Historique">Historique</span></a>
     </nav>
     <div id="job" class="job hidden"></div>
-    <div class="version">v<span id="version"></span> · <a href="https://github.com/Freshapp-io/music-tagger" target="_blank" rel="noopener">GitHub<span class="visually-hidden"> (nouvelle fenêtre)</span></a> · <a href="https://www.freshapp.io" target="_blank" rel="noopener">freshapp.io<span class="visually-hidden"> (nouvelle fenêtre)</span></a>
-      <div class="theme-switch" role="group" aria-label="Thème">
-        <button type="button" data-theme-choice="auto" title="Suivre le thème du système">Auto</button><button type="button" data-theme-choice="light">Clair</button><button type="button" data-theme-choice="dark">Sombre</button>
+    <div class="version">v<span id="version"></span> · <a href="https://github.com/Freshapp-io/music-tagger" target="_blank" rel="noopener">GitHub<span class="visually-hidden" data-i18n="(nouvelle fenêtre)"> (nouvelle fenêtre)</span></a> · <a href="https://www.freshapp.io" target="_blank" rel="noopener">freshapp.io<span class="visually-hidden" data-i18n="(nouvelle fenêtre)"> (nouvelle fenêtre)</span></a>
+      <div class="switches">
+        <div class="theme-switch" role="group" data-i18n-aria-label="Thème">
+          <button type="button" data-theme-choice="auto" data-i18n-title="Suivre le thème du système"><span data-i18n="Auto">Auto</span></button><button type="button" data-theme-choice="light"><span data-i18n="Clair">Clair</span></button><button type="button" data-theme-choice="dark"><span data-i18n="Sombre">Sombre</span></button>
+        </div>
+        <div class="theme-switch" role="group" data-i18n-aria-label="Langue">
+          <button type="button" data-lang-choice="fr" lang="fr" title="Français">FR</button><button type="button" data-lang-choice="en" lang="en" title="English">EN</button>
+        </div>
       </div>
-      <div class="toolbar" style="margin:8px 0 0"><span id="who"></span><button class="link logout" id="logout">Se déconnecter</button></div></div>
+      <div class="toolbar" style="margin:8px 0 0"><span id="who"></span><button class="link logout" id="logout"><span data-i18n="Se déconnecter">Se déconnecter</span></button></div></div>
   </aside>
   <main id="main"></main>
   <div id="drawer" class="drawer hidden"><div class="drawer-body" id="drawer-body"></div></div>
   <div id="player" class="player hidden">
     <span id="pl-label" class="pl-label"></span>
     <audio id="pl-audio" controls preload="none"></audio>
-    <button id="pl-close" title="Fermer le lecteur">✕</button>
+    <button id="pl-close" data-i18n-title="Fermer le lecteur" title="Fermer le lecteur">✕</button>
   </div>
   <div id="toast" class="toast hidden"></div>
   <script src="/static/app.js"></script>

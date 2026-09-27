@@ -21,7 +21,7 @@ LOCK_SECONDS = 15 * 60
 
 # Paths reachable without being logged in (login page and what it needs).
 PUBLIC_PREFIXES = ("/static/brand/", "/static/fonts/")
-PUBLIC_PATHS = {"/login", "/api/login", "/healthz", "/static/style.css", "/static/login.js", "/static/theme.js"}
+PUBLIC_PATHS = {"/login", "/api/login", "/healthz", "/static/style.css", "/static/login.js", "/static/theme.js", "/static/i18n.js"}
 
 _failures = {}          # ip -> [timestamps]
 _lock = threading.Lock()
