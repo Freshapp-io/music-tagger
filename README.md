@@ -113,6 +113,11 @@ reste intact, ce qui permet de mettre à jour par `git pull`) :
 
 L'image fonctionne sur **amd64 et arm64** (Raspberry Pi 4 / 5).
 
+Docker fige la configuration du volume à sa création : après avoir modifié
+`MUSIC_DEVICE` ou les options de montage, exécuter
+`docker compose down && docker volume rm music-tagger_music` puis relancer
+(la musique n'est pas touchée).
+
 Mise à jour :
 
 ```bash
@@ -261,6 +266,11 @@ untouched, so updating is just a `git pull`):
   network drive (`Z:\`) is not visible to Docker.
 
 The image runs on **amd64 and arm64** (Raspberry Pi 4 / 5).
+
+Docker freezes a volume's settings when it is created: after changing
+`MUSIC_DEVICE` or the mount options, run
+`docker compose down && docker volume rm music-tagger_music`, then start again
+(the music itself is not touched).
 
 Updating:
 

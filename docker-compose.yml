@@ -39,5 +39,5 @@ volumes:
     driver: local
     driver_opts:
       type: ${MUSIC_MOUNT_TYPE:-none}
-      device: ${MUSIC_DEVICE:-${MUSIC_PATH:-/srv/music}}
+      device: ${MUSIC_DEVICE:?Set MUSIC_DEVICE in .env (folder holding the music library)}
       o: ${MUSIC_MOUNT_OPTIONS:-bind}
