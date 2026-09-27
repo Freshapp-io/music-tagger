@@ -19,7 +19,7 @@ Application web (Docker) pour nettoyer les tags d'une grosse bibliothèque MP3,
 typiquement servie par [Navidrome](https://www.navidrome.org/).
 
 - **Nom technique** : `freshapp-music-tagger`
-- **Version** : 1.0.0
+- **Version** : 1.1.0
 - **Auteur** : FreshApp.io
 
 ### Fonctionnement
@@ -71,6 +71,26 @@ nom du dossier, titres et numéros de piste déduits des noms de fichiers.
 - Un scan ne retire jamais de l'index le contenu d'un dossier devenu
   illisible, et s'interrompt si la bibliothèque est vide ou inaccessible.
 
+### Identification
+
+L'application est protégée par un identifiant et un mot de passe (un seul compte).
+Toutes les pages et l'API le demandent, y compris l'écoute et les pochettes.
+
+- Définir `APP_USER` et, de préférence, `APP_PASSWORD_HASH` dans `.env` :
+  ```bash
+  docker compose run --rm music-tagger python -m app.auth hash
+  ```
+  (`APP_PASSWORD` en clair est aussi accepté.)
+- Sans mot de passe configuré, un mot de passe est généré au premier démarrage,
+  affiché dans les logs (`docker compose logs`) et conservé dans
+  `data/generated-password.txt`.
+- Session par cookie signé (HttpOnly, SameSite=Strict), valable 30 jours,
+  invalidée si le mot de passe change. 5 échecs de connexion bloquent l'adresse
+  IP pendant 15 minutes.
+- **Exposition sur Internet** : passer par un reverse proxy HTTPS (Traefik,
+  Caddy, Nginx Proxy Manager…). Le cookie est alors marqué `Secure`
+  automatiquement (`COOKIE_SECURE=auto`, via `X-Forwarded-Proto`).
+
 ### Installation
 
 ```bash
@@ -94,6 +114,9 @@ Deux façons de donner accès à la bibliothèque, à choisir dans `docker-compo
 
 | Variable | Défaut | Rôle |
 |---|---|---|
+| `APP_USER` | admin | identifiant de connexion |
+| `APP_PASSWORD_HASH` / `APP_PASSWORD` | — | mot de passe (haché ou en clair) ; généré s'il est absent |
+| `COOKIE_SECURE` | auto | cookie `Secure` : `auto` (si HTTPS), `true`, `false` |
 | `MUSIC_SUBDIR` | — | sous-dossier du volume qui contient la bibliothèque |
 | `PUID` / `PGID` | 1000 | utilisateur qui écrit les fichiers |
 | `PORT` | 8085 | port web |
@@ -134,7 +157,7 @@ Dockerised web app to clean up the tags of a large MP3 library, typically
 served by [Navidrome](https://www.navidrome.org/).
 
 - **Technical name**: `freshapp-music-tagger`
-- **Version**: 1.0.0
+- **Version**: 1.1.0
 - **Author**: FreshApp.io
 
 ### How it works
@@ -183,6 +206,25 @@ the folder name, titles and track numbers derived from file names.
 - A scan never drops the content of a folder that became unreadable from the
   index, and aborts if the library is empty or unreachable.
 
+### Authentication
+
+The app is protected by a user name and password (single account). Every page
+and API call requires it, including playback and cover art.
+
+- Set `APP_USER` and preferably `APP_PASSWORD_HASH` in `.env`:
+  ```bash
+  docker compose run --rm music-tagger python -m app.auth hash
+  ```
+  (a plain `APP_PASSWORD` is accepted too.)
+- Without any password, one is generated at first start, printed in the logs
+  (`docker compose logs`) and kept in `data/generated-password.txt`.
+- Signed session cookie (HttpOnly, SameSite=Strict), valid for 30 days,
+  invalidated when the password changes. 5 failed logins lock the IP address
+  for 15 minutes.
+- **Exposing it to the Internet**: put it behind an HTTPS reverse proxy
+  (Traefik, Caddy, Nginx Proxy Manager…). The cookie is then flagged `Secure`
+  automatically (`COOKIE_SECURE=auto`, via `X-Forwarded-Proto`).
+
 ### Installation
 
 ```bash
@@ -206,6 +248,9 @@ Two ways to give the container access to the library, chosen in `docker-compose.
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `APP_USER` | admin | login name |
+| `APP_PASSWORD_HASH` / `APP_PASSWORD` | — | password (hashed or plain); generated when missing |
+| `COOKIE_SECURE` | auto | `Secure` cookie: `auto` (when HTTPS), `true`, `false` |
 | `MUSIC_SUBDIR` | — | sub-folder of the volume holding the library |
 | `PUID` / `PGID` | 1000 | user that writes the files |
 | `PORT` | 8085 | web port |

@@ -195,3 +195,17 @@ a.btn.primary { background: var(--accent); border-color: var(--accent); color: v
 .chip.g-clean { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .job.hidden + .version { margin-top: auto; }
+
+/* ---- login */
+body.login-page { align-items: center; justify-content: center; padding: 16px; }
+.login-card { flex: none; width: min(380px, 100%); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; box-shadow: var(--shadow); padding: 28px; position: relative; overflow: hidden; }
+.login-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: var(--gradient); }
+.login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.login-brand img { width: 64px; }
+.login-card form { display: flex; flex-direction: column; gap: 6px; }
+.login-card label { color: var(--muted); font-size: 13px; margin-top: 8px; }
+.login-card input { padding: 9px 10px; }
+.login-card button { margin-top: 14px; padding: 9px; font-weight: 600; }
+.login-error { color: var(--bad); min-height: 1.2em; margin: 6px 0 0; font-size: 13px; }
+.logout { margin-left: auto; }

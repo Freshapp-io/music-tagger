@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connexion — Freshapp Music Tagger</title>
+  <meta name="theme-color" content="#1E6FA5">
+  <link rel="icon" href="/static/brand/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/brand/favicon-32x32.png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-page">
+  <main class="login-card">
+    <div class="login-brand">
+      <img src="/static/brand/colibri.svg" alt="">
+      <span class="brand-name"><span class="fa"><span class="g">Fresh</span><span class="t">app</span></span><span class="app">Music Tagger</span></span>
+    </div>
+    <h1>Connexion</h1>
+    <form id="login" novalidate>
+      <label for="user">Identifiant</label>
+      <input id="user" name="user" autocomplete="username" required autofocus>
+      <label for="password">Mot de passe</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <p id="error" class="login-error" role="alert" aria-live="assertive"></p>
+      <button class="primary" type="submit">Se connecter</button>
+    </form>
+  </main>
+  <script src="/static/login.js"></script>
+</body>
+</html>

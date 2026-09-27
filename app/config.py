@@ -8,7 +8,7 @@ def _env(name, default=None):
 
 
 APP_NAME = "Freshapp Music Tagger"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 MUSIC_ROOT = Path(_env("MUSIC_ROOT", "/music")).resolve()
 DATA_DIR = Path(_env("DATA_DIR", "/data")).resolve()
@@ -26,3 +26,11 @@ NAVIDROME_USER = _env("NAVIDROME_USER")
 NAVIDROME_PASSWORD = _env("NAVIDROME_PASSWORD")
 
 AUDIO_EXT = (".mp3",)
+
+# Login. Without APP_PASSWORD / APP_PASSWORD_HASH a password is generated at
+# first start, stored in DATA_DIR/generated-password.txt and printed in the logs.
+APP_USER = _env("APP_USER", "admin")
+APP_PASSWORD = _env("APP_PASSWORD")
+APP_PASSWORD_HASH = _env("APP_PASSWORD_HASH")     # python -m app.auth hash
+SECRET_KEY = _env("SECRET_KEY")                   # default: generated in DATA_DIR
+COOKIE_SECURE = _env("COOKIE_SECURE", "auto")     # auto = when served over HTTPS

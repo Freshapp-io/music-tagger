@@ -12,6 +12,7 @@ async function api(method, url, body) {
   const opts = { method, headers: {} };
   if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
   const r = await fetch(url, opts);
+  if (r.status === 401 && !url.startsWith("/api/login")) { location.replace("/login"); throw new Error("Session expirée"); }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.detail || `Erreur ${r.status}`);
   return data;
@@ -54,6 +55,7 @@ let lastJobStatus = null;
 async function refreshStatus() {
   try { status = await api("GET", "/api/status"); } catch { setTimeout(refreshStatus, 5000); return; }
   $("#version").textContent = status.version || "";
+  $("#who").textContent = status.user || "";
   for (const el of $$("[data-count]")) {
     const n = status.counts[el.dataset.count];
     el.textContent = n ? n.toLocaleString("fr") : "";
@@ -1100,5 +1102,6 @@ async function renderHistory(main) {
 }
 
 // -------------------------------------------------------------------- boot
+$("#logout").onclick = () => api("POST", "/api/logout").finally(() => location.replace("/login"));
 api("GET", "/api/genres/canon").then((r) => { genreCanon = r.canon; }).catch(() => {});
 refreshStatus().then(render);

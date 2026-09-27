@@ -8,6 +8,8 @@ import pytest
 _TMP = Path(tempfile.mkdtemp(prefix="mt-"))
 os.environ["MUSIC_ROOT"] = str(_TMP / "music")
 os.environ["DATA_DIR"] = str(_TMP / "data")
+os.environ["APP_USER"] = "admin"
+os.environ["APP_PASSWORD"] = "test-password"
 (_TMP / "music").mkdir()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -60,3 +62,9 @@ class FakeJob:
 @pytest.fixture()
 def job():
     return FakeJob()
+
+
+def login(client):
+    r = client.post("/api/login", json={"user": "admin", "password": "test-password"})
+    assert r.status_code == 200
+    return client

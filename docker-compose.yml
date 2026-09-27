@@ -18,6 +18,10 @@ services:
       MUSIC_ROOT: /music/${MUSIC_SUBDIR:-}
       TRASH_DIR: /music/${MUSIC_SUBDIR:-}/.music-tagger-trash
       SCAN_THREADS: ${SCAN_THREADS:-8}
+      APP_USER: ${APP_USER:-admin}
+      APP_PASSWORD: ${APP_PASSWORD:-}
+      APP_PASSWORD_HASH: ${APP_PASSWORD_HASH:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-auto}
       MB_USER_AGENT: ${MB_USER_AGENT:-}
       NAVIDROME_URL: ${NAVIDROME_URL:-}
       NAVIDROME_USER: ${NAVIDROME_USER:-}

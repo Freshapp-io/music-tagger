@@ -2,16 +2,17 @@ import hashlib
 import json
 import os
 import secrets
+import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import analysis, config, db, fixes, genres, jobs, musicbrainz, scanner
+from . import analysis, auth, config, db, fixes, genres, jobs, musicbrainz, scanner
 
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 
@@ -19,6 +20,7 @@ STATIC = os.path.join(os.path.dirname(__file__), "static")
 @asynccontextmanager
 async def lifespan(_app):
     db.init()
+    auth.password_setting()      # prints a generated password on first start
     yield
 
 
@@ -36,6 +38,75 @@ def busy_handler(_: Request, exc: jobs.Busy):
 @app.exception_handler(ValueError)
 def value_handler(_: Request, exc: ValueError):
     return JSONResponse({"detail": str(exc)}, status_code=400)
+
+
+# --------------------------------------------------------------------- auth
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    path = request.url.path
+    if auth.is_public(path) or auth.read_token(request.cookies.get(auth.COOKIE, "")):
+        response = await call_next(request)
+    elif path.startswith("/api/"):
+        response = JSONResponse({"detail": "Authentification requise"}, status_code=401)
+    else:
+        response = RedirectResponse("/login", status_code=303)
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    return response
+
+
+def _client_ip(request: Request):
+    return request.client.host if request.client else "?"
+
+
+def _secure(request: Request):
+    if config.COOKIE_SECURE in ("true", "1", "yes"):
+        return True
+    if config.COOKIE_SECURE in ("false", "0", "no"):
+        return False
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    return proto.split(",")[0].strip() == "https"
+
+
+@app.get("/login")
+def login_page():
+    return FileResponse(os.path.join(STATIC, "login.html"))
+
+
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}
+
+
+class LoginReq(BaseModel):
+    user: str
+    password: str
+
+
+@app.post("/api/login")
+def login(req: LoginReq, request: Request):
+    ip = _client_ip(request)
+    wait = auth.seconds_locked(ip)
+    if wait:
+        raise HTTPException(429, f"Trop de tentatives. Réessayez dans {wait // 60 + 1} min.")
+    if not auth.check_credentials(req.user, req.password):
+        auth.record_failure(ip)
+        time.sleep(0.5)
+        raise HTTPException(401, "Identifiant ou mot de passe incorrect")
+    auth.clear_failures(ip)
+    response = JSONResponse({"ok": True})
+    response.set_cookie(auth.COOKIE, auth.make_token(req.user), max_age=auth.SESSION_DAYS * 86400,
+                        httponly=True, samesite="strict", secure=_secure(request), path="/")
+    return response
+
+
+@app.post("/api/logout")
+def logout():
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(auth.COOKIE, path="/")
+    return response
 
 
 @app.get("/")
@@ -85,7 +156,7 @@ def status():
         "trash_dir": str(config.TRASH_DIR),
         "tracks": n_tracks, "albums": n_albums, "counts": counts, "last_scan": last_scan,
         "job": j.as_dict() if j else None,
-        "navidrome": bool(config.NAVIDROME_URL), "version": config.VERSION,
+        "navidrome": bool(config.NAVIDROME_URL), "version": config.VERSION, "user": config.APP_USER,
     }
 
 

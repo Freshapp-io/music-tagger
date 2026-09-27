@@ -1,6 +1,6 @@
 import json
 
-from conftest import make_mp3
+from conftest import login, make_mp3
 
 from app import analysis, db, fixes, scanner, tagger
 
@@ -136,6 +136,7 @@ def test_api_smoke(library, job):
     make_mp3(library / "Artist - Album (2010)/01 - Song.mp3")
     scanner.scan(job)
     with TestClient(app) as client:
+        login(client)
         s = client.get("/api/status").json()
         assert s["tracks"] == 1 and s["counts"]["untagged"] == 1
         items = client.get("/api/albums", params={"issue": "untagged"}).json()["items"]
@@ -219,6 +220,7 @@ def test_review_mode_endpoints(library, job):
         make_mp3(library / f"Bob_James-Two-1975/{i:02d}-{t}.mp3", artist="Bob James", album="Two", title=t)
     scanner.scan(job)
     with TestClient(app) as client:
+        login(client)
         d = client.get("/api/album", params={"dir": "VA - Rap Classics"}).json()
         g = {t["filename"]: t["guess"] for t in d["tracks"]}
         assert g["02 - Jay-Z - Dead Presidents.mp3"] == {"track": "2", "artist": "Jay-Z", "title": "Dead Presidents"}
