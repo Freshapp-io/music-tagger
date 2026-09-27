@@ -74,6 +74,9 @@ async function refreshStatus() {
       <div class="bar"><div style="width:${j.status === "running" ? pct : 100}%"></div></div>
       <div class="msg" title="${esc(tr(j.message))}">${esc(tr(j.message))}</div>
       ${j.n_errors ? `<div class="small" style="color:var(--bad)">${t("{n} erreur(s)", { n: j.n_errors })}</div>` : ""}`;
+    // Phones: the sidebar is hidden, so mirror a running job in the top bar.
+    $("#topbar-job").innerHTML = j.status === "running"
+      ? `${esc(tr(j.label))} · ${pct}%<div class="bar"><div style="width:${pct}%"></div></div>` : "";
     if (lastJobStatus === "running" && j.status !== "running") {
       toast(`${tr(j.label)}${COLON}${j.status === "done" ? tr(j.message) || t("terminé") : t("échec") + " — " + tr(j.message)}`, j.status !== "done");
       if (currentView() !== "review") render();   // never wipe edits in progress
@@ -1355,6 +1358,17 @@ async function renderHistory(main) {
     });
   }
 }
+
+// ------------------------------------------------------------ mobile menu
+function setNav(open) {
+  document.body.classList.toggle("nav-open", open);
+  $("#burger").setAttribute("aria-expanded", String(open));
+  if (open) ($("#nav a.active") || $("#nav a")).focus();
+}
+$("#burger").onclick = () => setNav(!document.body.classList.contains("nav-open"));
+$("#nav-backdrop").onclick = () => setNav(false);
+for (const a of $$("#nav a")) a.addEventListener("click", () => setNav(false));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && document.body.classList.contains("nav-open")) { setNav(false); $("#burger").focus(); } });
 
 // -------------------------------------------------------------------- boot
 function syncChoiceButtons() {

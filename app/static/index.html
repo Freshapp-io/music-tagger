@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Freshapp.io Music Tagger</title>
   <meta name="theme-color" content="#1E6FA5">
   <link rel="icon" href="/static/brand/favicon.ico" sizes="any">
@@ -16,7 +16,18 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <aside class="sidebar">
+  <header class="topbar">
+    <button type="button" class="burger" id="burger" aria-controls="sidebar" aria-expanded="false" data-i18n-aria-label="Ouvrir le menu" aria-label="Ouvrir le menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <a class="brand" href="#/" title="Freshapp.io Music Tagger">
+      <img src="/static/brand/icon.svg" alt="">
+      <span class="brand-name"><span class="fa"><span class="g">Fresh</span><span class="t">app</span><span class="i">.io</span></span><span class="app">Music Tagger</span></span>
+    </a>
+    <div class="topbar-job" id="topbar-job" aria-live="polite"></div>
+  </header>
+  <div class="nav-backdrop" id="nav-backdrop"></div>
+  <aside class="sidebar" id="sidebar">
     <a class="brand" href="#/" title="Freshapp.io Music Tagger">
       <img src="/static/brand/icon.svg" alt="">
       <span class="brand-name"><span class="fa"><span class="g">Fresh</span><span class="t">app</span><span class="i">.io</span></span><span class="app">Music Tagger</span></span>

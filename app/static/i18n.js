@@ -308,6 +308,7 @@ const EN = {
   "Se connecter": "Log in",
   "Serveur injoignable": "Server unreachable",
   "Menu principal": "Main menu",
+  "Ouvrir le menu": "Open the menu",
 };
 
 // Messages built by the server (job progress, errors, suggestion reasons,
