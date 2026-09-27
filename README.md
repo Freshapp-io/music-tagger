@@ -19,7 +19,7 @@ Application web (Docker) pour nettoyer les tags d'une grosse bibliothèque MP3,
 typiquement servie par [Navidrome](https://www.navidrome.org/).
 
 - **Nom technique** : `freshapp-music-tagger`
-- **Version** : 1.4.0
+- **Version** : 1.5.0
 - **Auteur** : FreshApp.io
 
 ### Fonctionnement
@@ -46,6 +46,13 @@ nom du dossier, titres et numéros de piste déduits des noms de fichiers.
   suggestion pré-remplie et modifiable, avec *Valider et suivant*, *Passer*,
   *Ne plus proposer* (raccourcis Ctrl+Entrée, Ctrl+→, Ctrl+I), et *Enregistrer*
   (Ctrl+S) pour écrire les modifications en restant sur l'album.
+- **Tag auto** : sur une liste (par ex. les non taggués), l'app cherche chaque
+  album sur MusicBrainz et lui donne une **note de confiance** sur 100 (durées,
+  titres, noms). Les albums au-dessus de la note minimale choisie sont
+  présélectionnés ; un album est dit *ambigu* si un autre album obtient une note
+  proche, et n'est alors jamais présélectionné. Options : album artist de
+  MusicBrainz, du dossier ou imposé, genre vide complété, pochette, ne remplir que
+  les champs vides.
 - **Piste par piste** : pour les compilations, chaque morceau se tague et
   s'enregistre séparément, avec suggestion depuis le nom de fichier ou recherche
   du morceau sur MusicBrainz.
@@ -70,12 +77,12 @@ nom du dossier, titres et numéros de piste déduits des noms de fichiers.
 |---|---|
 | <a href="docs/screenshots/light/dashboard.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/dashboard.png"><img src="docs/screenshots/light/dashboard.png" alt="Tableau de bord"></picture></a> | <a href="docs/screenshots/light/various.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/various.png"><img src="docs/screenshots/light/various.png" alt="Liste Various Artists avec suggestions"></picture></a> |
 | **Tableau de bord** : les problèmes détectés dans la bibliothèque | **Various Artists** : suggestion d'album artist et niveau de confiance |
-| <a href="docs/screenshots/light/review.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/review.png"><img src="docs/screenshots/light/review.png" alt="Mode revue album par album"></picture></a> | <a href="docs/screenshots/light/musicbrainz.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/musicbrainz.png"><img src="docs/screenshots/light/musicbrainz.png" alt="Association avec une release MusicBrainz"></picture></a> |
-| **Revue album par album**, avec le lecteur intégré | **MusicBrainz** : association fichiers ↔ pistes (titre + durée) |
-| <a href="docs/screenshots/light/track-by-track.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/track-by-track.png"><img src="docs/screenshots/light/track-by-track.png" alt="Compilation taggée piste par piste"></picture></a> | <a href="docs/screenshots/light/duplicates.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/duplicates.png"><img src="docs/screenshots/light/duplicates.png" alt="Doublons d'albums"></picture></a> |
-| **Piste par piste** pour les compilations, recherche du morceau | **Doublons** : la meilleure version est présélectionnée |
-| <a href="docs/screenshots/light/genres.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/genres.png"><img src="docs/screenshots/light/genres.png" alt="Harmonisation des genres"></picture></a> | <a href="docs/screenshots/light/login.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/login.png"><img src="docs/screenshots/light/login.png" alt="Page de connexion"></picture></a> |
-| **Genres** : chaque valeur ramenée vers un genre cible | **Connexion** ; thème Auto / Clair / Sombre |
+| <a href="docs/screenshots/light/autotag.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/autotag.png"><img src="docs/screenshots/light/autotag.png" alt="Tag auto"></picture></a> | <a href="docs/screenshots/light/review.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/review.png"><img src="docs/screenshots/light/review.png" alt="Mode revue album par album"></picture></a> |
+| **Tag auto** : note de confiance, présélection au-dessus du seuil | **Revue album par album**, avec le lecteur intégré |
+| <a href="docs/screenshots/light/musicbrainz.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/musicbrainz.png"><img src="docs/screenshots/light/musicbrainz.png" alt="Association avec une release MusicBrainz"></picture></a> | <a href="docs/screenshots/light/track-by-track.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/track-by-track.png"><img src="docs/screenshots/light/track-by-track.png" alt="Compilation taggée piste par piste"></picture></a> |
+| **MusicBrainz** : association fichiers ↔ pistes (titre + durée) | **Piste par piste** pour les compilations, recherche du morceau |
+| <a href="docs/screenshots/light/duplicates.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/duplicates.png"><img src="docs/screenshots/light/duplicates.png" alt="Doublons d'albums"></picture></a> | <a href="docs/screenshots/light/genres.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/genres.png"><img src="docs/screenshots/light/genres.png" alt="Harmonisation des genres"></picture></a> |
+| **Doublons** : la meilleure version est présélectionnée | **Genres** : chaque valeur ramenée vers un genre cible |
 
 Captures réalisées sur la bibliothèque de démonstration générée par
 `tools/demo_library.py` ; elles s'affichent en clair ou en sombre selon le
@@ -200,7 +207,7 @@ Dockerised web app to clean up the tags of a large MP3 library, typically
 served by [Navidrome](https://www.navidrome.org/).
 
 - **Technical name**: `freshapp-music-tagger`
-- **Version**: 1.4.0
+- **Version**: 1.5.0
 - **Author**: FreshApp.io
 
 ### How it works
@@ -227,6 +234,12 @@ the folder name, titles and track numbers derived from file names.
   time, with the suggestion pre-filled and editable: *Validate and next*,
   *Skip*, *Don't suggest again* (Ctrl+Enter, Ctrl+→, Ctrl+I), and *Save*
   (Ctrl+S) to write the changes while staying on the album.
+- **Auto-tagging**: from a list (e.g. untagged folders), every album is looked
+  up on MusicBrainz and given a **confidence score** out of 100 (lengths,
+  titles, names). Albums above the chosen minimum score are pre-selected; an
+  album is *ambiguous* when another album scores close to it, and is then never
+  pre-selected. Options: album artist from MusicBrainz, from the folder or
+  forced, empty genre filled in, cover art, fill empty fields only.
 - **Track by track**: for compilations, each track is tagged and saved on its
   own, with a suggestion from the file name or a MusicBrainz track search.
 - **MusicBrainz**: album search by name **and by track lengths** (like
@@ -248,12 +261,12 @@ the folder name, titles and track numbers derived from file names.
 |---|---|
 | <a href="docs/screenshots/light/dashboard.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/dashboard.png"><img src="docs/screenshots/light/dashboard.png" alt="Dashboard"></picture></a> | <a href="docs/screenshots/light/various.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/various.png"><img src="docs/screenshots/light/various.png" alt="Various Artists list with suggestions"></picture></a> |
 | **Dashboard**: problems found in the library | **Various Artists**: suggested album artist and confidence level |
-| <a href="docs/screenshots/light/review.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/review.png"><img src="docs/screenshots/light/review.png" alt="Album-by-album review"></picture></a> | <a href="docs/screenshots/light/musicbrainz.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/musicbrainz.png"><img src="docs/screenshots/light/musicbrainz.png" alt="Matching a MusicBrainz release"></picture></a> |
-| **Album-by-album review**, with the built-in player | **MusicBrainz**: file ↔ track matching (title + duration) |
-| <a href="docs/screenshots/light/track-by-track.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/track-by-track.png"><img src="docs/screenshots/light/track-by-track.png" alt="Compilation tagged track by track"></picture></a> | <a href="docs/screenshots/light/duplicates.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/duplicates.png"><img src="docs/screenshots/light/duplicates.png" alt="Duplicate albums"></picture></a> |
-| **Track by track** for compilations, with track search | **Duplicates**: the best version is pre-selected |
-| <a href="docs/screenshots/light/genres.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/genres.png"><img src="docs/screenshots/light/genres.png" alt="Genre harmonisation"></picture></a> | <a href="docs/screenshots/light/login.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/login.png"><img src="docs/screenshots/light/login.png" alt="Login page"></picture></a> |
-| **Genres**: every value mapped onto a target genre | **Login**; Auto / Light / Dark theme |
+| <a href="docs/screenshots/light/autotag.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/autotag.png"><img src="docs/screenshots/light/autotag.png" alt="Auto-tagging"></picture></a> | <a href="docs/screenshots/light/review.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/review.png"><img src="docs/screenshots/light/review.png" alt="Album-by-album review"></picture></a> |
+| **Auto-tagging**: confidence score, pre-selection above the threshold | **Album-by-album review**, with the built-in player |
+| <a href="docs/screenshots/light/musicbrainz.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/musicbrainz.png"><img src="docs/screenshots/light/musicbrainz.png" alt="Matching a MusicBrainz release"></picture></a> | <a href="docs/screenshots/light/track-by-track.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/track-by-track.png"><img src="docs/screenshots/light/track-by-track.png" alt="Compilation tagged track by track"></picture></a> |
+| **MusicBrainz**: file ↔ track matching (title + duration) | **Track by track** for compilations, with track search |
+| <a href="docs/screenshots/light/duplicates.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/duplicates.png"><img src="docs/screenshots/light/duplicates.png" alt="Duplicate albums"></picture></a> | <a href="docs/screenshots/light/genres.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/genres.png"><img src="docs/screenshots/light/genres.png" alt="Genre harmonisation"></picture></a> |
+| **Duplicates**: the best version is pre-selected | **Genres**: every value mapped onto a target genre |
 
 Screenshots taken on the demo library generated by `tools/demo_library.py`;
 they follow GitHub's light or dark theme.

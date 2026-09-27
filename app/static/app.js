@@ -97,6 +97,7 @@ async function render() {
   if (view === "history") return renderHistory(main);
   if (view === "review") return renderReview(main);
   if (view === "genres") return renderGenres(main);
+  if (view === "autotag") return renderAutotag(main);
   if (["untagged", "various", "inconsistent", "all"].includes(view)) return renderList(main, view);
   main.innerHTML = `<div class="empty">Page inconnue</div>`;
 }
@@ -171,6 +172,7 @@ async function renderList(main, view) {
       <select id="sort">${Object.entries({ dir: "Tri : dossier", artist: "Tri : artiste", tracks: "Tri : nb pistes", bitrate: "Tri : bitrate" }).map(([k, v]) => `<option value="${k}" ${st.sort === k ? "selected" : ""}>${v}</option>`).join("")}</select>
       ${view !== "all" ? `<label><input type="checkbox" id="showIgnored" ${st.showIgnored ? "checked" : ""}> afficher les ignorés</label>` : ""}
       <span class="grow"></span>
+      ${view !== "all" ? `<button id="autotag" title="Chercher chaque album sur MusicBrainz et le noter">⚡ Tag auto</button>` : ""}
       ${view !== "all" ? `<button class="primary" id="review">▶ Revue album par album</button>` : ""}
     </div>
     <div id="batch"></div>
@@ -181,6 +183,19 @@ async function renderList(main, view) {
   $("#confidence").onchange = (e) => { st.confidence = e.target.value; st.offset = 0; loadList(view); };
   $("#sort").onchange = (e) => { st.sort = e.target.value; loadList(view); };
   if ($("#showIgnored")) $("#showIgnored").onchange = (e) => { st.showIgnored = e.target.checked; st.offset = 0; loadList(view); };
+  const matchingDirs = async () => {
+    if (st.selected.size) return [...st.selected];
+    const dirs = [];
+    for (let off = 0; ; off += 1000) {
+      const d = await api("GET", "/api/albums?" + listParams(view, st, { offset: off, limit: 1000 }));
+      dirs.push(...d.items.map((a) => a.dir));
+      if (off + 1000 >= d.total) break;
+    }
+    return dirs;
+  };
+  if ($("#autotag")) $("#autotag").onclick = () => run(async () => {
+    startAutotag(await matchingDirs(), st.selected.size ? "sélection" : VIEW_INFO[view][0]);
+  });
   if ($("#review")) $("#review").onclick = () => run(async () => {
     // Review the selection if there is one, otherwise everything matching the filters.
     let dirs = [...st.selected];
@@ -1127,6 +1142,153 @@ function applyGenres(items) {
     if (r.status === "done") { toast("Choix mémorisé"); loadGenres(); return; }
     lastJobStatus = "running"; refreshStatus();
   });
+}
+
+// ----------------------------------------------------------------- autotag
+const AT_STATUS = {
+  ok: ["à appliquer", "g-clean"], ambiguous: ["ambigu", "g-weird"], partial: ["incomplet", "g-weird"],
+  none: ["aucun résultat", "g-empty"], error: ["erreur", "g-empty"], applied: ["appliqué", "g-clean"],
+};
+const AT_FILTERS = { ready: "Prêts (≥ note min.)", below: "Sous le seuil", doubt: "Ambigus / incomplets", none: "Sans résultat", applied: "Appliqués", all: "Tous" };
+const atState = { filter: "ready", selected: null, options: null, data: null, sig: "" };
+
+async function startAutotag(dirs, label) {
+  if (!dirs.length) return toast("Aucun dossier à analyser");
+  const min = Math.ceil((dirs.length * 5) / 60);
+  if (!confirm(`Analyser ${dirs.length} dossier(s) (${label}) sur MusicBrainz ?\n\n` +
+    `Recherche par durées et par nom, puis note de confiance pour chaque album.\n` +
+    `Durée estimée : ~${min} min (MusicBrainz limite à 1 requête / s). Aucun fichier n'est modifié à cette étape.`)) return;
+  await run(() => api("POST", "/api/autotag/analyse", { dirs }));
+  lastJobStatus = "running"; refreshStatus();
+  atState.selected = null;
+  location.hash = "#/autotag";
+}
+
+function atDefaultSelection(items, o) {
+  return new Set(items.filter((r) => r.status === "ok" && r.score >= o.min_score).map((r) => r.dir));
+}
+
+async function renderAutotag(main) {
+  const data = await run(() => api("GET", "/api/autotag"));
+  atState.data = data;
+  atState.options = atState.options || { ...data.options };
+  const o = atState.options;
+  // New or updated analysis results -> start again from the default selection.
+  const sig = data.items.map((r) => r.dir + r.analyzed + r.status).join("|");
+  if (!atState.selected || atState.sig !== sig) atState.selected = atDefaultSelection(data.items, o);
+  atState.sig = sig;
+  main.innerHTML = `
+    <h1>Tag auto</h1>
+    <p class="lead">Chaque dossier analysé reçoit une <b>note de confiance</b> sur 100 : durées des pistes, ressemblance
+      des titres avec les noms de fichiers, et de l'artiste / album avec le nom du dossier. Un dossier est dit
+      <b>ambigu</b> quand un autre album obtient une note proche : il n'est jamais présélectionné.
+      Lancez l'analyse depuis une liste (bouton ⚡ Tag auto), vérifiez ici, puis appliquez. Tout est annulable depuis l'historique.</p>
+    <div class="panel at-options">
+      <label>Note minimale <input type="number" id="at-min" min="50" max="100" step="1" value="${o.min_score}" style="width:70px"></label>
+      <fieldset><legend>Album artist</legend>
+        <label><input type="radio" name="at-aa" value="mb" ${o.albumartist_mode === "mb" ? "checked" : ""}> celui de MusicBrainz</label>
+        <label><input type="radio" name="at-aa" value="folder" ${o.albumartist_mode === "folder" ? "checked" : ""}> l'artiste du dossier</label>
+        <label><input type="radio" name="at-aa" value="fixed" ${o.albumartist_mode === "fixed" ? "checked" : ""}> imposé :</label>
+        <input id="at-aa-value" value="${esc(o.albumartist_value)}" placeholder="ex. Various Artists" style="width:190px">
+      </fieldset>
+      <label><input type="checkbox" id="at-genre" ${o.fill_genre ? "checked" : ""}> Compléter le genre vide (genre habituel de l'artiste)</label>
+      <label><input type="checkbox" id="at-cover" ${o.cover ? "checked" : ""}> Intégrer la pochette si absente</label>
+      <label><input type="checkbox" id="at-empty" ${o.only_empty ? "checked" : ""}> Ne remplir que les champs vides</label>
+    </div>
+    <div class="toolbar"><div class="seg" id="at-filter">${Object.entries(AT_FILTERS).map(([k, v]) => `<button data-f="${k}">${v}</button>`).join("")}</div></div>
+    <div id="at-batch"></div>
+    <div id="at-list"></div>`;
+  const readOptions = () => {
+    o.min_score = Number($("#at-min").value) || 95;
+    o.albumartist_mode = ($('input[name="at-aa"]:checked') || {}).value || "mb";
+    o.albumartist_value = $("#at-aa-value").value;
+    o.fill_genre = $("#at-genre").checked; o.cover = $("#at-cover").checked; o.only_empty = $("#at-empty").checked;
+  };
+  for (const el of $$(".at-options input")) el.onchange = () => {
+    const before = o.min_score;
+    readOptions();
+    if (o.min_score !== before) atState.selected = atDefaultSelection(data.items, o);
+    drawAutotag();
+  };
+  for (const b of $$("#at-filter button")) b.onclick = () => { atState.filter = b.dataset.f; drawAutotag(); };
+  drawAutotag();
+}
+
+function atRows() {
+  const { data, options: o, filter } = atState;
+  return data.items.filter((r) => {
+    if (filter === "ready") return r.status === "ok" && r.score >= o.min_score;
+    if (filter === "below") return r.status === "ok" && r.score < o.min_score;
+    if (filter === "doubt") return r.status === "ambiguous" || r.status === "partial";
+    if (filter === "none") return r.status === "none" || r.status === "error";
+    if (filter === "applied") return r.status === "applied";
+    return true;
+  });
+}
+
+function drawAutotag() {
+  for (const b of $$("#at-filter button")) b.classList.toggle("on", b.dataset.f === atState.filter);
+  const rows = atRows(), box = $("#at-list");
+  if (!atState.data.items.length) {
+    box.innerHTML = `<div class="empty">Aucune analyse pour l'instant : ouvrez <a href="#/untagged">Non taggués</a> et cliquez sur « ⚡ Tag auto ».</div>`;
+    drawAutotagBatch(rows); return;
+  }
+  if (!rows.length) { box.innerHTML = `<div class="empty">Rien dans cette catégorie</div>`; drawAutotagBatch(rows); return; }
+  const pct = (v) => v === null || v === undefined ? "—" : v + " %";
+  box.innerHTML = `<table><thead><tr><th class="check"><input type="checkbox" id="at-all"></th>
+      <th>Dossier</th><th>Proposition MusicBrainz</th><th>Note</th><th>Détail</th><th>Statut</th></tr></thead><tbody>
+    ${rows.map((r) => {
+      const d = r.details, rel = d.release;
+      const cls = r.score >= atState.options.min_score ? "conf-high" : r.score >= 80 ? "conf-medium" : "conf-low";
+      return `<tr data-dir="${esc(r.dir)}">
+        <td class="check"><input type="checkbox" class="at-sel" ${atState.selected.has(r.dir) ? "checked" : ""} ${["none", "error", "applied"].includes(r.status) ? "disabled" : ""}></td>
+        <td><a href="#" class="open dir">${esc(r.dir)}</a><div class="small muted">${r.n_tracks || "?"} pistes</div></td>
+        <td>${rel ? `<a href="https://musicbrainz.org/release/${esc(rel.id)}" target="_blank" rel="noopener">${esc(rel.artist)} — ${esc(rel.title)}<span class="visually-hidden"> (nouvelle fenêtre)</span></a>
+          <div class="small muted">${esc(rel.date || "")} · ${rel.tracks} pistes ${d.via_durations ? `<span class="chip g-clean">durées ✓</span>` : ""}</div>` : `<span class="muted small">${esc(d.reason || "")}</span>`}</td>
+        <td><b class="${cls}">${r.score ? Math.round(r.score) : "—"}</b>
+          ${r.score ? `<div class="at-bar"><div style="width:${Math.min(100, r.score)}%"></div></div>` : ""}</td>
+        <td class="small">durées ${pct(d.durations)}${d.avg_gap !== null && d.avg_gap !== undefined ? ` (±${d.avg_gap} s, max ${d.max_gap} s)` : ""}<br>
+          titres ${pct(d.titles)} · noms ${pct(d.names)}
+          ${d.rival ? `<div class="conf-medium">aussi proche : ${esc(d.rival.artist)} — ${esc(d.rival.title)} (${Math.round(d.rival.score)})</div>` : ""}</td>
+        <td><span class="chip ${AT_STATUS[r.status][1]}">${AT_STATUS[r.status][0]}</span></td>
+      </tr>`;
+    }).join("")}</tbody></table>`;
+  $("#at-all").onchange = (e) => {
+    for (const r of rows) if (!["none", "error", "applied"].includes(r.status)) e.target.checked ? atState.selected.add(r.dir) : atState.selected.delete(r.dir);
+    drawAutotag();
+  };
+  for (const tr of $$("tbody tr", box)) {
+    const dir = tr.dataset.dir;
+    $(".at-sel", tr).onchange = (e) => { e.target.checked ? atState.selected.add(dir) : atState.selected.delete(dir); drawAutotagBatch(rows); };
+    $("a.open", tr).onclick = (e) => { e.preventDefault(); openAlbum(dir); };
+  }
+  drawAutotagBatch(rows);
+}
+
+function drawAutotagBatch(rows) {
+  const sel = [...atState.selected].filter((d) => atState.data.items.some((r) => r.dir === d && !["none", "error", "applied"].includes(r.status)));
+  const risky = sel.filter((d) => { const r = atState.data.items.find((x) => x.dir === d); return r.status !== "ok" || r.score < atState.options.min_score; });
+  $("#at-batch").innerHTML = `<div class="batchbar">
+    <b>${sel.length} dossier(s) sélectionné(s)</b>
+    ${risky.length ? `<span class="conf-medium small">dont ${risky.length} sous le seuil ou ambigu(s)</span>` : ""}
+    <span style="flex:1"></span>
+    <button id="at-reanalyse" ${sel.length ? "" : "disabled"}>Réanalyser</button>
+    <button class="primary" id="at-apply" ${sel.length ? "" : "disabled"}>Appliquer à la sélection</button></div>`;
+  $("#at-reanalyse").onclick = () => run(async () => {
+    await api("POST", "/api/autotag/analyse", { dirs: sel, force: true });
+    lastJobStatus = "running"; refreshStatus();
+  });
+  $("#at-apply").onclick = () => {
+    const o = atState.options;
+    const aa = o.albumartist_mode === "fixed" ? `imposé « ${o.albumartist_value} »` : o.albumartist_mode === "folder" ? "artiste du dossier" : "MusicBrainz";
+    if (!confirm(`Tagger ${sel.length} dossier(s) avec MusicBrainz ?\n\nAlbum artist : ${aa}\nGenre vide complété : ${o.fill_genre ? "oui" : "non"}\n` +
+      `Pochette : ${o.cover ? "oui" : "non"}\nSeulement les champs vides : ${o.only_empty ? "oui" : "non"}` +
+      (risky.length ? `\n\n⚠ ${risky.length} dossier(s) sous le seuil ou ambigu(s) inclus.` : "") + "\n\nAnnulable depuis l'historique.")) return;
+    run(async () => {
+      await api("POST", "/api/autotag/apply", { dirs: sel, options: o });
+      atState.selected = new Set(); lastJobStatus = "running"; refreshStatus();
+    });
+  };
 }
 
 // ----------------------------------------------------------------- history

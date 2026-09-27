@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import analysis, auth, config, db, fixes, genres, jobs, musicbrainz, scanner
+from . import analysis, auth, autotag, config, db, fixes, genres, jobs, musicbrainz, scanner
 
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 
@@ -149,6 +149,9 @@ def status():
             if r["dup_group"] and "duplicate" not in ign.get(r["dir"], ()):
                 dup_groups.add(r["dup_group"])
         counts["duplicate_groups"] = len(dup_groups)
+        min_score = db.get_meta(c, "autotag_options", autotag.DEFAULT_OPTIONS).get("min_score", 95)
+        counts["autotag_ready"] = c.execute(
+            "SELECT COUNT(*) FROM autotag WHERE status='ok' AND score >= ?", (min_score,)).fetchone()[0]
         last_scan = db.get_meta(c, "last_scan")
     j = jobs.current()
     return {
@@ -469,6 +472,53 @@ def genres_apply(req: GenreApplyReq):
     if not todo:
         return {"status": "done", "kept": len(keep)}
     return jobs.start("genres", f"Genres ({len(todo)} valeur(s))", genres.apply, todo).as_dict()
+
+
+# ------------------------------------------------------------------ autotag
+
+class AutotagAnalyseReq(BaseModel):
+    dirs: list[str]
+    force: bool = False
+
+
+@app.post("/api/autotag/analyse")
+def autotag_analyse(req: AutotagAnalyseReq):
+    return jobs.start("autotag", f"Tag auto : analyse de {len(req.dirs)} dossier(s)",
+                      autotag.analyse, req.dirs, req.force).as_dict()
+
+
+@app.get("/api/autotag")
+def autotag_list():
+    with db.session() as c:
+        rows = c.execute("""SELECT t.*, a.n_tracks, a.issues FROM autotag t
+                            LEFT JOIN albums a ON a.dir = t.dir ORDER BY t.score DESC, t.dir""").fetchall()
+        options = db.get_meta(c, "autotag_options", autotag.DEFAULT_OPTIONS)
+    items = []
+    for r in rows:
+        d = dict(r)
+        d["details"] = json.loads(d["details"] or "{}")
+        d["details"].pop("mapping", None)
+        d["issues"] = json.loads(d["issues"]) if d["issues"] else []
+        items.append(d)
+    return {"options": {**autotag.DEFAULT_OPTIONS, **options}, "items": items}
+
+
+class AutotagApplyReq(BaseModel):
+    dirs: list[str]
+    options: dict = {}
+
+
+@app.post("/api/autotag/apply")
+def autotag_apply(req: AutotagApplyReq):
+    return jobs.start("autotag-apply", f"Tag auto : {len(req.dirs)} dossier(s)",
+                      autotag.apply, req.dirs, req.options).as_dict()
+
+
+@app.post("/api/autotag/forget")
+def autotag_forget(req: AutotagAnalyseReq):
+    with db.session() as c:
+        c.executemany("DELETE FROM autotag WHERE dir=?", [(d,) for d in req.dirs])
+    return {"ok": True}
 
 
 # ------------------------------------------------------------------ history

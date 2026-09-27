@@ -95,6 +95,14 @@ def build(root):
         ("Les disques de mon père", m("3:40")), ("Dreamin", m("4:14")), ("Noir D", m("3:59")),
     ], tagged=False, with_cover=False)
 
+    # Untagged rip of a real CD: found on MusicBrainz from its track lengths alone
+    album(root, "Portishead/Portishead - Dummy (1994)", [
+        (t, secs + (1 if i % 2 else -1)) for i, (t, secs) in enumerate([
+            ("Mysterons", 306), ("Sour Times", 254), ("Strangers", 238), ("It Could Be Sweet", 260),
+            ("Wandering Star", 294), ("It's a Fire", 229), ("Numb", 238), ("Roads", 305), ("Pedestal", 221),
+            ("Biscuit", 304), ("Glory Box", 306)])
+    ], tagged=False, with_cover=False)
+
     # Navidrome would split it: no album artist, 'feat.' artists, two years
     album(root, "Massive Attack/Massive Attack - Mezzanine", [
         ("Angel", m("6:18"), "Massive Attack feat. Horace Andy"), ("Risingson", m("4:58"), "Massive Attack"),

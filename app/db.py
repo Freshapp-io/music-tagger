@@ -47,6 +47,12 @@ CREATE TABLE IF NOT EXISTS history (
 CREATE INDEX IF NOT EXISTS history_batch ON history(batch);
 
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+
+CREATE TABLE IF NOT EXISTS autotag (
+    dir TEXT PRIMARY KEY, analyzed TEXT, release_id TEXT, score REAL,
+    status TEXT,                    -- ok / ambiguous / partial / none / error / applied
+    details TEXT, applied TEXT
+);
 """
 
 
