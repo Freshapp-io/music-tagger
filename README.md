@@ -102,13 +102,26 @@ docker compose up -d --build
 
 Ouvrir ensuite `http://<hôte>:8085` et lancer un **scan**.
 
-Deux façons de donner accès à la bibliothèque, à choisir dans `docker-compose.yml` :
+L'accès à la bibliothèque se règle uniquement dans `.env` (`docker-compose.yml`
+reste intact, ce qui permet de mettre à jour par `git pull`) :
 
-- **A) Sur le NAS** (recommandé, accès disque local) : `MUSIC_PATH` = chemin du
-  dossier partagé sur le NAS (ex. `/volume1/Medias` sur Synology).
-- **B) Sur un PC** (Docker Desktop, WSL) : le conteneur monte lui-même le partage
-  SMB (`SMB_HOST`, `SMB_SHARE`, `SMB_USER`, `SMB_PASSWORD`). Un lecteur réseau
-  Windows (`Z:\`) n'est pas visible par Docker.
+- **A) Sur le NAS** (recommandé, accès disque local) : `MUSIC_DEVICE` = dossier
+  qui contient la bibliothèque, `MUSIC_SUBDIR` = éventuel sous-dossier.
+- **B) Sur une autre machine** (PC, Docker Desktop, WSL) : le conteneur monte
+  lui-même le partage SMB (`MUSIC_MOUNT_TYPE=cifs`, voir `.env.example`). Un
+  lecteur réseau Windows (`Z:\`) n'est pas visible par Docker.
+
+L'image fonctionne sur **amd64 et arm64** (Raspberry Pi 4 / 5).
+
+Mise à jour :
+
+```bash
+git pull && docker compose up -d --build
+```
+
+La base (`data/music-tagger.db`) enregistre des chemins relatifs à la
+bibliothèque : on peut la copier d'une machine à l'autre en conservant
+l'historique, les choix et les dossiers ignorés.
 
 ### Configuration
 
@@ -117,7 +130,9 @@ Deux façons de donner accès à la bibliothèque, à choisir dans `docker-compo
 | `APP_USER` | admin | identifiant de connexion |
 | `APP_PASSWORD_HASH` / `APP_PASSWORD` | — | mot de passe (haché ou en clair) ; généré s'il est absent |
 | `COOKIE_SECURE` | auto | cookie `Secure` : `auto` (si HTTPS), `true`, `false` |
-| `MUSIC_SUBDIR` | — | sous-dossier du volume qui contient la bibliothèque |
+| `MUSIC_DEVICE` | — | dossier (ou partage SMB) qui contient la bibliothèque |
+| `MUSIC_MOUNT_TYPE`, `MUSIC_MOUNT_OPTIONS` | `none`, `bind` | montage : dossier local, ou `cifs` + options SMB |
+| `MUSIC_SUBDIR` | — | sous-dossier de `MUSIC_DEVICE` qui contient la musique |
 | `PUID` / `PGID` | 1000 | utilisateur qui écrit les fichiers |
 | `PORT` | 8085 | port web |
 | `SCAN_THREADS` | 8 | lectures parallèles pendant le scan |
@@ -236,13 +251,26 @@ docker compose up -d --build
 
 Then open `http://<host>:8085` and run a **scan**.
 
-Two ways to give the container access to the library, chosen in `docker-compose.yml`:
+Library access is configured in `.env` only (`docker-compose.yml` stays
+untouched, so updating is just a `git pull`):
 
-- **A) On the NAS** (recommended, local disk access): `MUSIC_PATH` = path of
-  the shared folder on the NAS (e.g. `/volume1/Medias` on Synology).
-- **B) On a PC** (Docker Desktop, WSL): the container mounts the SMB share
-  itself (`SMB_HOST`, `SMB_SHARE`, `SMB_USER`, `SMB_PASSWORD`). A Windows
+- **A) On the NAS** (recommended, local disk access): `MUSIC_DEVICE` = folder
+  holding the library, `MUSIC_SUBDIR` = optional sub-folder.
+- **B) On another machine** (PC, Docker Desktop, WSL): the container mounts the
+  SMB share itself (`MUSIC_MOUNT_TYPE=cifs`, see `.env.example`). A Windows
   network drive (`Z:\`) is not visible to Docker.
+
+The image runs on **amd64 and arm64** (Raspberry Pi 4 / 5).
+
+Updating:
+
+```bash
+git pull && docker compose up -d --build
+```
+
+The database (`data/music-tagger.db`) stores paths relative to the library: it
+can be copied from one machine to another, keeping history, choices and
+ignored folders.
 
 ### Configuration
 
@@ -251,7 +279,9 @@ Two ways to give the container access to the library, chosen in `docker-compose.
 | `APP_USER` | admin | login name |
 | `APP_PASSWORD_HASH` / `APP_PASSWORD` | — | password (hashed or plain); generated when missing |
 | `COOKIE_SECURE` | auto | `Secure` cookie: `auto` (when HTTPS), `true`, `false` |
-| `MUSIC_SUBDIR` | — | sub-folder of the volume holding the library |
+| `MUSIC_DEVICE` | — | folder (or SMB share) holding the library |
+| `MUSIC_MOUNT_TYPE`, `MUSIC_MOUNT_OPTIONS` | `none`, `bind` | mount: local folder, or `cifs` + SMB options |
+| `MUSIC_SUBDIR` | — | sub-folder of `MUSIC_DEVICE` holding the music |
 | `PUID` / `PGID` | 1000 | user that writes the files |
 | `PORT` | 8085 | web port |
 | `SCAN_THREADS` | 8 | parallel reads during a scan |

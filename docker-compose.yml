@@ -1,9 +1,6 @@
 # Freshapp Music Tagger — https://github.com/Freshapp-io/music-tagger
 #
-# Two ways to give the container access to the library — pick ONE `music`
-# volume definition at the bottom (see README):
-#   A) the app runs on the NAS next to Navidrome -> bind mount the folder
-#   B) the app runs elsewhere (PC / WSL Docker Desktop) -> mount the SMB share
+# Access to the music library is set in .env (see the `music` volume below).
 services:
   music-tagger:
     build: .
@@ -31,18 +28,16 @@ services:
       - ./data:/data
 
 volumes:
-  # --- A) local folder (NAS): uncomment this one, comment block B ------------
-  # music:
-  #   driver: local
-  #   driver_opts:
-  #     type: none
-  #     o: bind
-  #     device: ${MUSIC_PATH:-/volume1/Medias}
-
-  # --- B) SMB share (app running on a PC) -----------------------------------
+  # The library volume is configured from .env only (see .env.example):
+  #   A) app on the NAS itself -> bind mount of a local folder (default)
+  #        MUSIC_DEVICE=/srv/dev-disk/Medias
+  #   B) app on another machine -> the container mounts the SMB share
+  #        MUSIC_MOUNT_TYPE=cifs
+  #        MUSIC_DEVICE=//nas/Medias
+  #        MUSIC_MOUNT_OPTIONS=username=...,password=...,uid=1000,gid=1000,vers=3.0,iocharset=utf8
   music:
     driver: local
     driver_opts:
-      type: cifs
-      device: "//${SMB_HOST}/${SMB_SHARE}"
-      o: "username=${SMB_USER},password=${SMB_PASSWORD},uid=${PUID:-1000},gid=${PGID:-1000},vers=3.0,iocharset=utf8,file_mode=0664,dir_mode=0775"
+      type: ${MUSIC_MOUNT_TYPE:-none}
+      device: ${MUSIC_DEVICE:-${MUSIC_PATH:-/srv/music}}
+      o: ${MUSIC_MOUNT_OPTIONS:-bind}
