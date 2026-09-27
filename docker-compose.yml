@@ -1,0 +1,44 @@
+# Freshapp Music Tagger — https://github.com/Freshapp-io/music-tagger
+#
+# Two ways to give the container access to the library — pick ONE `music`
+# volume definition at the bottom (see README):
+#   A) the app runs on the NAS next to Navidrome -> bind mount the folder
+#   B) the app runs elsewhere (PC / WSL Docker Desktop) -> mount the SMB share
+services:
+  music-tagger:
+    build: .
+    image: freshapp-music-tagger:latest
+    container_name: freshapp-music-tagger
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8085}:8080"
+    # Run as the owner of the music files so tags can be written.
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      MUSIC_ROOT: /music/${MUSIC_SUBDIR:-}
+      TRASH_DIR: /music/${MUSIC_SUBDIR:-}/.music-tagger-trash
+      SCAN_THREADS: ${SCAN_THREADS:-8}
+      MB_USER_AGENT: ${MB_USER_AGENT:-}
+      NAVIDROME_URL: ${NAVIDROME_URL:-}
+      NAVIDROME_USER: ${NAVIDROME_USER:-}
+      NAVIDROME_PASSWORD: ${NAVIDROME_PASSWORD:-}
+    volumes:
+      - music:/music
+      - ./data:/data
+
+volumes:
+  # --- A) local folder (NAS): uncomment this one, comment block B ------------
+  # music:
+  #   driver: local
+  #   driver_opts:
+  #     type: none
+  #     o: bind
+  #     device: ${MUSIC_PATH:-/volume1/Medias}
+
+  # --- B) SMB share (app running on a PC) -----------------------------------
+  music:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: "//${SMB_HOST}/${SMB_SHARE}"
+      o: "username=${SMB_USER},password=${SMB_PASSWORD},uid=${PUID:-1000},gid=${PGID:-1000},vers=3.0,iocharset=utf8,file_mode=0664,dir_mode=0775"

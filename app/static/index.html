@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Freshapp Music Tagger</title>
+  <meta name="theme-color" content="#1E6FA5">
+  <link rel="icon" href="/static/brand/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/brand/favicon-32x32.png">
+  <link rel="apple-touch-icon" href="/static/brand/apple-touch-icon.png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#/" title="Freshapp Music Tagger">
+      <img src="/static/brand/colibri.svg" alt="">
+      <span class="brand-name"><span class="fa"><span class="g">Fresh</span><span class="t">app</span></span><span class="app">Music Tagger</span></span>
+    </a>
+    <nav id="nav">
+      <a href="#/" data-view="dashboard">Tableau de bord</a>
+      <a href="#/untagged" data-view="untagged">Non taggués <span class="count" data-count="untagged"></span></a>
+      <a href="#/various" data-view="various">Various Artists <span class="count" data-count="various"></span></a>
+      <a href="#/inconsistent" data-view="inconsistent">Tags incohérents <span class="count" data-count="inconsistent"></span></a>
+      <a href="#/duplicates" data-view="duplicates">Doublons <span class="count" data-count="duplicate_groups"></span></a>
+      <a href="#/genres" data-view="genres">Genres</a>
+      <a href="#/all" data-view="all">Tous les dossiers</a>
+      <a href="#/history" data-view="history">Historique</a>
+    </nav>
+    <div id="job" class="job hidden"></div>
+    <div class="version">v<span id="version"></span> · <a href="https://github.com/Freshapp-io/music-tagger" target="_blank" rel="noopener">GitHub<span class="visually-hidden"> (nouvelle fenêtre)</span></a></div>
+  </aside>
+  <main id="main"></main>
+  <div id="drawer" class="drawer hidden"><div class="drawer-body" id="drawer-body"></div></div>
+  <div id="player" class="player hidden">
+    <span id="pl-label" class="pl-label"></span>
+    <audio id="pl-audio" controls preload="none"></audio>
+    <button id="pl-close" title="Fermer le lecteur">✕</button>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
