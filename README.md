@@ -19,7 +19,7 @@ Application web (Docker) pour nettoyer les tags d'une grosse bibliothèque MP3,
 typiquement servie par [Navidrome](https://www.navidrome.org/).
 
 - **Nom technique** : `freshapp-music-tagger`
-- **Version** : 1.1.0
+- **Version** : 1.2.0
 - **Auteur** : FreshApp.io
 
 ### Fonctionnement
@@ -44,13 +44,15 @@ nom du dossier, titres et numéros de piste déduits des noms de fichiers.
 - **En lot** : filtrer (par exemple « suggestion sûre »), tout sélectionner, appliquer.
 - **Album par album** : le mode revue fait défiler les albums du filtre un par un,
   suggestion pré-remplie et modifiable, avec *Valider et suivant*, *Passer*,
-  *Ne plus proposer* (raccourcis Ctrl+Entrée, Ctrl+→, Ctrl+I).
+  *Ne plus proposer* (raccourcis Ctrl+Entrée, Ctrl+→, Ctrl+I), et *Enregistrer*
+  (Ctrl+S) pour écrire les modifications en restant sur l'album.
 - **Piste par piste** : pour les compilations, chaque morceau se tague et
   s'enregistre séparément, avec suggestion depuis le nom de fichier ou recherche
   du morceau sur MusicBrainz.
 - **MusicBrainz** : recherche de l'album, association fichiers ↔ pistes
   (numéro, titre, durée), tags complets avec identifiants MusicBrainz, pochette
-  depuis Cover Art Archive.
+  depuis Cover Art Archive. Les modifications en cours (genre…) sont enregistrées
+  avant, et le genre n'est jamais écrasé.
 - **Doublons** : la version de meilleure qualité est présélectionnée (bitrate,
   nombre de pistes, pochette, tags complets) ; les autres vont à la corbeille.
 - **Genres** : chaque valeur est rapprochée d'une liste de genres cibles
@@ -177,7 +179,7 @@ Dockerised web app to clean up the tags of a large MP3 library, typically
 served by [Navidrome](https://www.navidrome.org/).
 
 - **Technical name**: `freshapp-music-tagger`
-- **Version**: 1.1.0
+- **Version**: 1.2.0
 - **Author**: FreshApp.io
 
 ### How it works
@@ -202,11 +204,13 @@ the folder name, titles and track numbers derived from file names.
 - **In bulk**: filter (e.g. "confident suggestion"), select all, apply.
 - **Album by album**: review mode steps through the filtered albums one at a
   time, with the suggestion pre-filled and editable: *Validate and next*,
-  *Skip*, *Don't suggest again* (Ctrl+Enter, Ctrl+→, Ctrl+I).
+  *Skip*, *Don't suggest again* (Ctrl+Enter, Ctrl+→, Ctrl+I), and *Save*
+  (Ctrl+S) to write the changes while staying on the album.
 - **Track by track**: for compilations, each track is tagged and saved on its
   own, with a suggestion from the file name or a MusicBrainz track search.
 - **MusicBrainz**: album search, automatic file ↔ track matching (number, title,
   duration), full tags with MusicBrainz IDs, cover art from Cover Art Archive.
+  Pending edits (genre…) are saved first, and the genre is never overwritten.
 - **Duplicates**: the best-quality version is pre-selected (bitrate, number of
   tracks, cover, complete tags); the others go to the trash folder.
 - **Genres**: every value is mapped onto an editable list of target genres.

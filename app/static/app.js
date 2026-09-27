@@ -585,7 +585,8 @@ async function albumEditor(root, dir, opts = {}) {
     renderTracks();
   };
 
-  async function save() {
+  const FIELD_LABEL = { albumartist: "album artist", album: "album", year: "année", genre: "genre" };
+  function payload() {
     const albumFields = {};
     for (const inp of $$("[data-album]", root)) {
       const k = inp.dataset.album, v = inp.value.trim();
@@ -597,6 +598,23 @@ async function albumEditor(root, dir, opts = {}) {
       const ch = trackDiff(t.path);
       if (Object.keys(ch).length) edits[t.path] = ch;
     }
+    return { albumFields, edits };
+  }
+  /** Labels of what save() would actually change in the files ([] = nothing pending). */
+  function pending() {
+    const { albumFields, edits } = payload();
+    const out = [];
+    for (const [k, v] of Object.entries(albumFields)) {
+      if (k === "compilation") {
+        if (tracks.some((t) => !!t.compilation !== (v === "1"))) out.push("compilation");
+      } else if (tracks.some((t) => (t[k] || "") !== v)) out.push(FIELD_LABEL[k] || k);
+    }
+    const n = Object.keys(edits).length;
+    if (n) out.push(`${n} piste(s)`);
+    return out;
+  }
+  async function save() {
+    const { albumFields, edits } = payload();
     return api("POST", "/api/album/save", { dir, album: albumFields, tracks: edits });
   }
 
@@ -614,13 +632,14 @@ async function albumEditor(root, dir, opts = {}) {
     opts.onReload && opts.onReload();
   });
   const reloadAfterMb = () => { refreshStatus(); if (opts.onReload) opts.onReload(); else albumEditor(root, dir, opts); };
-  $(".ed-mb-open", root).onclick = () => mbPanel(root, dir, tracks, { artist: albumArtist(), album: $('[data-album="album"]', root).value }, reloadAfterMb);
+  $(".ed-mb-open", root).onclick = () => mbPanel(root, dir, tracks, { artist: albumArtist(), album: $('[data-album="album"]', root).value },
+    reloadAfterMb, { pending, save });
 
-  return { save, album: a };
+  return { save, pending, album: a };
 }
 
 // ------------------------------------------------------------ musicbrainz
-function mbPanel(root, dir, tracks, q, onApplied) {
+function mbPanel(root, dir, tracks, q, onApplied, editor) {
   const box = $(".ed-mb", root);
   box.classList.remove("hidden");
   box.innerHTML = `
@@ -646,7 +665,7 @@ function mbPanel(root, dir, tracks, q, onApplied) {
     for (const el of $$(".mb-result", out)) el.onclick = () => {
       $$(".mb-result", out).forEach((x) => x.classList.remove("sel"));
       el.classList.add("sel");
-      mbMatch(box, dir, tracks, el.dataset.id, onApplied);
+      mbMatch(box, dir, tracks, el.dataset.id, onApplied, editor);
     };
   });
   $(".mb-search", box).onclick = search;
@@ -654,7 +673,7 @@ function mbPanel(root, dir, tracks, q, onApplied) {
   if (q.album) search();
 }
 
-async function mbMatch(panel, dir, tracks, releaseId, onApplied) {
+async function mbMatch(panel, dir, tracks, releaseId, onApplied, editor) {
   const box = $(".mb-match", panel);
   box.innerHTML = `<div class="muted">Chargement de la tracklist…</div>`;
   const { release: rel, mapping } = await run(() => api("GET", "/api/mb/match?" + qs({ dir, release: releaseId })));
@@ -683,7 +702,14 @@ async function mbMatch(panel, dir, tracks, releaseId, onApplied) {
       return { path: tr.dataset.path, index: v === "" ? null : Number(v) };
     });
     const n = map.filter((m) => m.index !== null).length;
-    if (!confirm(`Écrire les tags MusicBrainz sur ${n} fichier(s) ?`)) return;
+    if (!n) return toast("Aucun fichier associé à une piste MusicBrainz : choisissez les correspondances dans le tableau", true);
+    const todo = editor ? editor.pending() : [];
+    const msg = todo.length
+      ? `Vos modifications non enregistrées (${todo.join(", ")}) vont d'abord être enregistrées, ` +
+        `puis MusicBrainz écrira artiste, album, titres, n° et année sur ${n} fichier(s).\n\nLe genre n'est pas modifié par MusicBrainz.`
+      : `Écrire les tags MusicBrainz sur ${n} fichier(s) ?\n\nLe genre n'est pas modifié par MusicBrainz.`;
+    if (!confirm(msg)) return;
+    if (todo.length) await editor.save();
     const r = await api("POST", "/api/mb/apply", { dir, release: releaseId, mapping: map, cover: $(".mb-cover", box).checked });
     toast(`${r.files} fichier(s) taggué(s)${r.cover ? " avec pochette" : ""}`);
     onApplied();
@@ -692,7 +718,7 @@ async function mbMatch(panel, dir, tracks, releaseId, onApplied) {
 
 // ------------------------------------------------------------------ review
 const review = { kind: null, label: "", items: [], idx: 0, status: {}, returnTo: "#/" };
-const REVIEW_STATUS = { done: "✓ validé", skip: "→ passé", ignore: "⊘ ne plus proposer" };
+const REVIEW_STATUS = { done: "✓ validé", saved: "💾 enregistré", skip: "→ passé", ignore: "⊘ ne plus proposer" };
 
 async function startReview(kind, label, items, returnTo) {
   if (!items.length) return toast("Rien à revoir avec ce filtre");
@@ -701,7 +727,7 @@ async function startReview(kind, label, items, returnTo) {
 }
 
 function reviewCounts() {
-  const c = { done: 0, skip: 0, ignore: 0 };
+  const c = { done: 0, saved: 0, skip: 0, ignore: 0 };
   Object.values(review.status).forEach((s) => c[s]++);
   return c;
 }
@@ -729,7 +755,7 @@ async function renderReview(main) {
       <div class="review-top">
         <b>Revue — ${esc(review.label)}</b>
         <span class="muted">${i + 1} / ${n}</span>
-        <span class="small muted">✓ ${c.done} · → ${c.skip} · ⊘ ${c.ignore}</span>
+        <span class="small muted">✓ ${c.done} · 💾 ${c.saved} · → ${c.skip} · ⊘ ${c.ignore}</span>
         ${st ? `<span class="chip">${REVIEW_STATUS[st]}</span>` : ""}
         <span class="grow"></span>
         <a href="${review.returnTo}" class="small">Quitter la revue</a>
@@ -740,6 +766,7 @@ async function renderReview(main) {
         <span class="grow"></span>
         <button id="rv-ignore" title="Ctrl+I">Ne plus proposer</button>
         <button id="rv-skip" title="Ctrl+→">Passer (ne pas traiter) →</button>
+        ${review.kind === "duplicate" ? "" : `<button id="rv-save" title="Ctrl+S — enregistre sans passer au suivant">💾 Enregistrer</button>`}
         <button class="primary" id="rv-ok" title="Ctrl+Entrée">${review.kind === "duplicate" ? "✓ Garder la version choisie et suivant" : "✓ Valider et suivant"}</button>
       </div>
     </div>
@@ -780,6 +807,22 @@ async function renderReview(main) {
   } else {
     const ed = await albumEditor(body, item, { review: true, onReload: () => renderReview(main) });
     validate = () => ed.save();
+    $("#rv-save").onclick = () => run(async () => {
+      if (!ed.pending().length) return toast("Rien à enregistrer");
+      const btns = $$(".review-actions button", main);
+      btns.forEach((b) => (b.disabled = true));
+      try {
+        const r = await ed.save();
+        review.status[i] = review.status[i] || "saved";
+        toast(`${r.files} fichier(s) enregistré(s) — vous restez sur cet album`);
+        refreshStatus();
+        const y = window.scrollY;
+        await renderReview(main);          // reload from the files, same album
+        window.scrollTo(0, y);
+      } finally {
+        btns.forEach((b) => (b.disabled = false));
+      }
+    });
     ignore = () => api("POST", "/api/ignore", { dirs: [item], kind: review.kind, value: true });
   }
 
@@ -802,7 +845,7 @@ async function renderReview(main) {
 
 document.addEventListener("keydown", (e) => {
   if (currentView() !== "review" || !e.ctrlKey || !$("#drawer").classList.contains("hidden")) return;
-  const map = { Enter: "#rv-ok", ArrowRight: "#rv-skip", ArrowLeft: "#rv-prev", i: "#rv-ignore", I: "#rv-ignore" };
+  const map = { Enter: "#rv-ok", ArrowRight: "#rv-skip", ArrowLeft: "#rv-prev", i: "#rv-ignore", I: "#rv-ignore", s: "#rv-save", S: "#rv-save" };
   const btn = map[e.key] && $(map[e.key]);
   if (btn && !btn.disabled) { e.preventDefault(); btn.click(); }
 });
