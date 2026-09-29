@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 
 from . import analysis, config, db, scanner, tagger
-from .parsing import fix_mojibake, is_various, parse_dir, parse_filename
+from .parsing import fix_mojibake, is_various, parse_dir, parse_filename, primary_artist
 
 ALBUM_FIELDS = ("albumartist", "album", "year", "genre", "compilation")
 
@@ -71,6 +71,27 @@ def track_guesses(rel_dir, tracks, albumartist=None):
     return out
 
 
+def loose_changes(tracks):
+    """Every file its own album (mixtapes, singles): album artist = the file's
+    artist (without 'feat.'), album = its album or else its title, track 1/1,
+    no disc number, no compilation flag. Missing artist / title come from the
+    file name."""
+    out = {}
+    for t in tracks:
+        g = parse_filename(t["filename"])
+        artist = t["artist"] or g.get("artist")
+        title = t["title"] or g.get("title")
+        want = {
+            "artist": artist, "title": title,
+            "albumartist": primary_artist(artist) if artist else t["albumartist"],
+            "album": t["album"] or title, "track": "1/1", "disc": None, "compilation": None,
+        }
+        ch = {k: v for k, v in want.items() if (v or None) != (t[k] or None) and not (k == "compilation" and not t[k])}
+        if ch:
+            out[t["path"]] = ch
+    return out
+
+
 def suggestion_changes(rel_dir, fields=("albumartist", "album", "year", "compilation", "tracks")):
     """Changes that applying the stored suggestion to a folder would make."""
     with db.session() as c:
@@ -79,6 +100,8 @@ def suggestion_changes(rel_dir, fields=("albumartist", "album", "year", "compila
     if not a:
         return {}
     sug = json.loads(a["suggestion"])
+    if sug.get("loose") or "loose" in fields:
+        return loose_changes(tracks)
     aa = sug.get("albumartist")
     guesses = track_guesses(rel_dir, tracks, aa)
     out = {}

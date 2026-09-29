@@ -8,7 +8,7 @@ from app import analysis, db, fixes, scanner
 
 def albums():
     with db.session() as c:
-        return {r["dir"]: dict(r, issues=json.loads(r["issues"]),
+        return {r["dir"]: dict(r, issues=json.loads(r["issues"]), suggestion=json.loads(r["suggestion"]),
                                misplaced=json.loads(r["misplaced"]) if r["misplaced"] else None)
                 for r in c.execute("SELECT * FROM albums")}
 
@@ -191,3 +191,59 @@ def test_migration_adds_new_columns(library):
         cols = {r["name"] for r in c.execute("PRAGMA table_info(albums)")}
     assert {"tag_artist", "misplaced"} <= cols
     analysis.compute_misplaced()        # works on the migrated table
+
+
+def test_deliberate_various_artists_is_kept(library, job):
+    """Setting 'Various Artists' on a folder of various artists must not be
+    suggested back to its most frequent artist (the editor pre-fills the suggestion)."""
+    for i, a in enumerate(["DJ Premier", "Funkmaster Flex", "DJ Clue", "DJ Premier"], 1):
+        make_mp3(library / f"Mixtapes/{i:02d}.mp3", artist=a, albumartist=a, album=f"Mix {i}", title=f"Mix {i}")
+    scanner.scan(job)
+    assert albums()["Mixtapes"]["suggestion"]["albumartist"] == "DJ Premier"
+    fixes.save_album("Mixtapes", {"albumartist": "Various Artists", "compilation": "1"}, {})
+    a = albums()["Mixtapes"]
+    assert (a["suggestion"]["albumartist"], a["suggestion"]["compilation"]) == ("Various Artists", 1)
+    assert "various" not in a["issues"]
+
+
+def test_loose_folder(library, job):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    make_mp3(library / "Mixtapes/DJ Premier - Crooklyn Cuts.mp3", artist="DJ Premier feat. Guru", title="Crooklyn Cuts")
+    make_mp3(library / "Mixtapes/Funkmaster Flex - 60 Minutes.mp3", artist="Funkmaster Flex", albumartist="Various Artists",
+             album="60 Minutes Of Funk", title="60 Minutes Of Funk", compilation="1")
+    make_mp3(library / "Mixtapes/DJ Clue - Desert Storm.mp3")                      # no tags at all
+    scanner.scan(job)
+    assert "inconsistent" in albums()["Mixtapes"]["issues"]
+    with TestClient(app) as client:
+        login(client)
+        assert client.post("/api/folder/mode", json={"dir": "Mixtapes", "loose": True}).status_code == 200
+        a = client.get("/api/album", params={"dir": "Mixtapes"}).json()["album"]
+        assert a["mode"] == "loose" and a["suggestion"]["loose"]
+        assert {"inconsistent", "loose_albumartist", "untagged"} <= set(a["issues"]) and "various" not in a["issues"]
+        ch = client.get("/api/album/preview", params={"dir": "Mixtapes", "fields": "loose"}).json()
+        assert ch["Mixtapes/DJ Premier - Crooklyn Cuts.mp3"] == {
+            "albumartist": "DJ Premier", "album": "Crooklyn Cuts", "track": "1/1"}
+        assert ch["Mixtapes/Funkmaster Flex - 60 Minutes.mp3"] == {
+            "albumartist": "Funkmaster Flex", "track": "1/1", "compilation": None}
+        assert ch["Mixtapes/DJ Clue - Desert Storm.mp3"] == {
+            "artist": "DJ Clue", "title": "Desert Storm", "albumartist": "DJ Clue", "album": "Desert Storm", "track": "1/1"}
+    # bulk 'apply the suggestion' does the same for loose folders
+    fixes.apply_suggestions(job, ["Mixtapes"], ("albumartist", "album", "year", "compilation", "tracks"))
+    a = albums()["Mixtapes"]
+    assert a["issues"] == [] and a["dup_group"] is None and a["misplaced"] is None
+    with TestClient(app) as client:
+        login(client)
+        client.post("/api/folder/mode", json={"dir": "Mixtapes", "loose": False})
+    assert "inconsistent" in albums()["Mixtapes"]["issues"]      # one folder, three albums again
+
+
+def test_looks_loose():
+    from app.analysis import looks_loose
+
+    def t(artist, album, minutes):
+        return {"artist": artist, "album": album, "duration": minutes * 60}
+    assert looks_loose([t("A", "x", 60), t("B", "y", 55), t("C", "z", 62)])
+    assert not looks_loose([t("A", "x", 4), t("B", "y", 5), t("C", "z", 3)])           # ordinary compilation
+    assert not looks_loose([t("A", "x", 60), t("A", "x", 58), t("A", "x", 61)])        # one long album

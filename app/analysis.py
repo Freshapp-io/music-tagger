@@ -58,7 +58,11 @@ def suggest(rel_dir, tracks):
     folder_artist = folder.get("artist")
 
     albumartist, compilation, confidence = None, 0, "low"
-    if existing_aa and aa_share >= 0.5:
+    if n and all(is_various(t["albumartist"]) for t in tracks) and n_prim >= 2 and prim_share < 0.6:
+        # 'Various Artists' set on purpose on a folder of various artists: keep it
+        albumartist, compilation, confidence = VARIOUS, 1, "high"
+        reasons.append(f"« Various Artists » sur toutes les pistes ({n_prim} artistes différents)")
+    elif existing_aa and aa_share >= 0.5:
         albumartist = existing_aa
         reasons.append(f"album artist présent sur {round(aa_share * n)}/{n} titres")
         confidence = "high" if aa_share >= 0.8 else "medium"
@@ -115,7 +119,31 @@ def tag_artist(tracks):
     return None
 
 
-def album_row(rel_dir, tracks):
+LOOSE_MIN_SECONDS = 20 * 60     # a 'track' this long is usually a whole mixtape
+
+
+def looks_loose(tracks):
+    """Mixtapes or singles folder: long files with different albums or artists."""
+    n = len(tracks)
+    if n < 3:
+        return False
+    durations = sorted(t["duration"] or 0 for t in tracks)
+    if durations[n // 2] < LOOSE_MIN_SECONDS:
+        return False
+    albums = distinct([t["album"] for t in tracks])
+    artists = distinct([primary_artist(t["artist"]) for t in tracks if t["artist"]])
+    return len(albums) >= max(2, n / 2) or len(artists) >= max(2, n / 2)
+
+
+def loose_mismatches(tracks):
+    """Files of a 'loose' folder whose album artist is not their own artist."""
+    return [t for t in tracks if t["artist"] and (
+        fold(t["albumartist"]) != fold(primary_artist(t["artist"])) or t["compilation"])]
+
+
+def album_row(rel_dir, tracks, loose=False):
+    """loose: the folder holds independent files (mixtapes, singles), each one
+    its own album: it is not checked as one album, only file by file."""
     n = len(tracks)
     tagged = [t for t in tracks if t["tagged"]]
     n_untagged = n - len(tagged)
@@ -125,7 +153,15 @@ def album_row(rel_dir, tracks):
     if n_untagged or n_incomplete:
         issues.append("untagged")
 
-    sug = suggest(rel_dir, tracks)
+    if loose:
+        sug = {"albumartist": None, "album": None, "year": None, "compilation": 0, "confidence": "high",
+               "reason": "pistes indépendantes : chaque fichier est un album", "folder": parse_dir(rel_dir),
+               "loose": True}
+        if loose_mismatches(tracks):
+            issues += ["inconsistent", "loose_albumartist"]
+    else:
+        sug = suggest(rel_dir, tracks)
+        sug["loose_hint"] = looks_loose(tracks)
     prim_values = [primary_artist(t["artist"]) for t in tracks if t["artist"] and not is_various(t["artist"])]
     _, prim_share = majority(prim_values + [None] * (n - len(prim_values)))
     has_va = any(is_various(t["albumartist"]) or is_various(t["artist"]) for t in tracks)
@@ -134,10 +170,10 @@ def album_row(rel_dir, tracks):
         and all(is_various(t["albumartist"]) for t in tracks)
         and prim_share < 0.6
     )
-    if has_va and not clean_compilation:
+    if has_va and not clean_compilation and not loose:
         issues.append("various")
 
-    if len(tagged) > 1:
+    if len(tagged) > 1 and not loose:
         sub = []
         if len(distinct([t["albumartist"] for t in tagged], keep_none=True)) > 1:
             sub.append("albumartist_mixed")
@@ -181,8 +217,9 @@ def album_row(rel_dir, tracks):
         "quality": None, "dup_group": None,
         "norm_artist": "various" if main_artist and is_various(main_artist) else fold(primary_artist(main_artist)),
         "norm_album": norm_album(main_album),
-        "titles": json.dumps(titles, ensure_ascii=False),
-        "tag_artist": tag_artist(tracks), "misplaced": None,
+        # a loose folder is no album: never a duplicate of another, never misplaced
+        "titles": json.dumps([] if loose else titles, ensure_ascii=False),
+        "tag_artist": None if loose else tag_artist(tracks), "misplaced": None,
     }
     row["quality"] = quality(row, 1.0)
     return row
@@ -224,10 +261,15 @@ def _insert(c, rows):
     )
 
 
+def loose_dirs(c):
+    return {r[0] for r in c.execute("SELECT dir FROM folder_modes WHERE mode='loose'")}
+
+
 def analyze_all():
     with db.session() as c:
         by_dir = _load_tracks(c)
-        rows = [album_row(d, ts) for d, ts in by_dir.items()]
+        loose = loose_dirs(c)
+        rows = [album_row(d, ts, d in loose) for d, ts in by_dir.items()]
         c.execute("DELETE FROM albums")
         _insert(c, rows)
     post_process()
@@ -237,9 +279,10 @@ def analyze_dirs(dirs):
     dirs = set(dirs)
     with db.session() as c:
         by_dir = _load_tracks(c, dirs)
+        loose = loose_dirs(c)
         for d in dirs:
             c.execute("DELETE FROM albums WHERE dir=?", (d,))
-        _insert(c, [album_row(d, ts) for d, ts in by_dir.items()])
+        _insert(c, [album_row(d, ts, d in loose) for d, ts in by_dir.items()])
     post_process()
 
 

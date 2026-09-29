@@ -54,6 +54,10 @@ CREATE TABLE IF NOT EXISTS scan_errors (
     ts TEXT DEFAULT (datetime('now', 'localtime'))
 );
 
+-- Folder handling chosen by the user: 'loose' = every file is its own album
+-- (mixtapes, singles), so the folder is not analysed as one album.
+CREATE TABLE IF NOT EXISTS folder_modes (dir TEXT PRIMARY KEY, mode TEXT NOT NULL);
+
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 
 CREATE TABLE IF NOT EXISTS autotag (

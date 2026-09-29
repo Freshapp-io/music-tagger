@@ -44,6 +44,7 @@ const SUB = {
   album_mixed: t("Nom d'album différent"),
   year_mixed: t("Années différentes"),
   mbid_mixed: t("ID MusicBrainz différents"),
+  loose_albumartist: t("Album artist ≠ artiste (pistes indépendantes)"),
 };
 // Kinds of "wrong folder": folder names disagreeing with each other, or with the tags.
 const MISPLACED_SUB = {
@@ -291,7 +292,7 @@ async function loadList(view) {
         <tr class="clickable" data-dir="${esc(a.dir)}">
           <td class="check"><input type="checkbox" class="sel" ${st.selected.has(a.dir) ? "checked" : ""}></td>
           <td><div class="dir">${esc(a.dir || "/")}</div>
-            <div>${badges(a.issues)} ${a.ignored.length ? `<span class="chip">${t("ignoré :")} ${a.ignored.map((k) => ISSUE[k] || k).join(", ")}</span>` : ""}</div>
+            <div>${a.mode === "loose" ? `<span class="chip">${t("pistes indépendantes")}</span> ` : ""}${badges(a.issues)} ${a.ignored.length ? `<span class="chip">${t("ignoré :")} ${a.ignored.map((k) => ISSUE[k] || k).join(", ")}</span>` : ""}</div>
             <div style="margin-top:3px">${subBadges(a.issues)}</div></td>
           <td class="small">
             <div class="muted">${t("Artistes")}</div>${chips(a.artists, 3)}
@@ -530,6 +531,9 @@ function numberingIssues(rows) {
 async function albumEditor(root, dir, opts = {}) {
   const d = await run(() => api("GET", "/api/album?" + qs({ dir })));
   const { album: a, tracks } = d;
+  // 'Independent tracks' folder (mixtapes, singles): album artist and album are edited per track.
+  const loose = a.mode === "loose";
+  const tfields = loose ? [...TRACK_FIELDS, "albumartist", "album"] : TRACK_FIELDS;
   const s = a.suggestion || {};
   const coverTrack = tracks.find((tk) => tk.has_cover);
   const allComp = tracks.length && tracks.every((tk) => tk.compilation);
@@ -551,7 +555,7 @@ async function albumEditor(root, dir, opts = {}) {
   };
 
   // Track model shared by the table view and the track-by-track view.
-  const orig = Object.fromEntries(tracks.map((tk) => [tk.path, Object.fromEntries(TRACK_FIELDS.map((f) => [f, tk[f] || ""]))]));
+  const orig = Object.fromEntries(tracks.map((tk) => [tk.path, Object.fromEntries(tfields.map((f) => [f, tk[f] || ""]))]));
   const vals = Object.fromEntries(tracks.map((tk) => [tk.path, { ...orig[tk.path] }]));
   const extra = {};          // MusicBrainz ids picked per track
   const saved = new Set();   // tracks saved individually
@@ -562,7 +566,7 @@ async function albumEditor(root, dir, opts = {}) {
       ${coverTrack ? `<img src="/api/cover?${qs({ path: coverTrack.path })}" alt="">` : `<img alt="">`}
       <div class="grow">
         <h1>${esc((a.dir || "/").split("/").pop())}</h1>
-        <div>${badges(a.issues)} ${subBadges(a.issues)}</div>
+        <div>${loose ? `<span class="chip">${t("pistes indépendantes")}</span> ` : ""}${badges(a.issues)} ${subBadges(a.issues)}</div>
         <div class="muted small" style="margin-top:4px">${t("{n} pistes", { n: a.n_tracks })} · ${fmtDur(a.duration)} · ${a.avg_bitrate} kbps${a.vbr ? " VBR" : ""} · ${fmtSize(a.total_size)} · ${t("qualité {q}", { q: a.quality })}</div>
         ${s.reason ? `<div class="small conf-${s.confidence}">${t("Suggestion {conf} :", { conf: CONF[s.confidence] })} ${esc(tr(s.reason))}</div>` : ""}
       </div>
@@ -570,15 +574,18 @@ async function albumEditor(root, dir, opts = {}) {
     </div>
     <div class="folder-context">${folderContext(d)}</div>
 
+    ${!loose && s.loose_hint ? `<div class="notice small">${t("hint.loose")}
+      <button class="ed-loose-on" style="margin-left:8px">${t("Passer en pistes indépendantes")}</button></div>` : ""}
     <div class="panel">
       <div class="form-grid">
-        ${fieldRow("albumartist", t("Album artist"))}
-        ${fieldRow("album", t("Album"))}
-        ${fieldRow("year", t("Année"))}
+        ${loose ? "" : fieldRow("albumartist", t("Album artist"))}
+        ${loose ? "" : fieldRow("album", t("Album"))}
+        ${loose ? "" : fieldRow("year", t("Année"))}
         ${fieldRow("genre", t("Genre"))}
-        <label>${t("Compilation")}</label><div><label><input type="checkbox" class="ed-compil" ${s.compilation || allComp ? "checked" : ""}> ${t("Vraie compilation (plusieurs artistes, TCMP=1)")}</label></div>
+        ${loose ? "" : `<label>${t("Compilation")}</label><div><label><input type="checkbox" class="ed-compil" ${s.compilation || allComp ? "checked" : ""}> ${t("Vraie compilation (plusieurs artistes, TCMP=1)")}</label></div>`}
       </div>
-      <p class="small muted" style="margin-bottom:0">${t("hint.albumfields")}</p>
+      <p class="small muted" style="margin-bottom:0">${loose ? t("hint.loosefields") : t("hint.albumfields")}</p>
+      <label class="small"${tip("tip.loose")}><input type="checkbox" class="ed-loose" ${loose ? "checked" : ""}> ${t("Pistes indépendantes (mixtapes, singles) : chaque fichier est un album")}</label>
     </div>
 
     <div class="toolbar">
@@ -589,7 +596,8 @@ async function albumEditor(root, dir, opts = {}) {
       <span class="grow"></span>
       <button class="ed-fill-empty"${tip("tip.fillempty")}>${t("Compléter les vides depuis les noms de fichiers")}</button>
       <button class="ed-fill-all"${tip("tip.fillall")}>${t("Tout remplacer depuis les noms de fichiers")}</button>
-      <button class="ed-artist-aa"${tip("tip.artistaa")}>${t("Artiste = album artist")}</button>
+      ${loose ? `<button class="primary ed-loose-fill"${tip("tip.loosefill")}>${t("Chaque fichier = un album")}</button>`
+        : `<button class="ed-artist-aa"${tip("tip.artistaa")}>${t("Artiste = album artist")}</button>`}
       <select class="ed-num"${tip("tip.numbering")}>
         <option value="">${t("Numérotation…")}</option>
         <optgroup label="${t("N° de piste")}">
@@ -639,12 +647,17 @@ async function albumEditor(root, dir, opts = {}) {
     const inp = $(`[data-album="${b.dataset.pick}"]`, root);
     inp.value = b.dataset.val; dirty.add(b.dataset.pick); mark(inp, inp._orig);
   };
-  const albumArtist = () => $('[data-album="albumartist"]', root).value.trim();
+  const albumArtist = () => ($('[data-album="albumartist"]', root) || { value: "" }).value.trim();
+  // Typing 'Various Artists' means a compilation: tick the box (it can be unticked).
+  const aaInput = $('[data-album="albumartist"]', root);
+  if (aaInput) aaInput.addEventListener("input", () => {
+    if (/^(various( artists?)?|va|v\.a\.|divers|artistes divers)$/i.test(aaInput.value.trim())) $(".ed-compil", root).checked = true;
+  });
 
   // ---- tracks
   const trackDiff = (path) => {
     const ch = {};
-    for (const f of TRACK_FIELDS) if ((vals[path][f] || "").trim() !== orig[path][f]) ch[f] = (vals[path][f] || "").trim();
+    for (const f of tfields) if ((vals[path][f] || "").trim() !== orig[path][f]) ch[f] = (vals[path][f] || "").trim();
     return Object.assign(ch, extra[path] || {});
   };
   const input = (tk, f, cls = "") => `<input class="${cls}" data-path="${esc(tk.path)}" data-f="${f}" value="${esc(vals[tk.path][f])}" placeholder="${esc(tk.guess[f] || "")}">`;
@@ -677,11 +690,13 @@ async function albumEditor(root, dir, opts = {}) {
     const box = $(".ed-tracks", root);
     if (view === "table") {
       box.innerHTML = `<table class="tracks">
-        <thead><tr><th></th><th class="num">${t("Disque")}</th><th class="num">${t("N°")}</th><th>${t("Titre")}</th><th>${t("Artiste")}</th><th>${t("Fichier")}</th><th>kbps</th></tr></thead>
+        <thead><tr><th></th><th class="num">${t("Disque")}</th><th class="num">${t("N°")}</th><th>${t("Titre")}</th><th>${t("Artiste")}</th>
+          ${loose ? `<th>${t("Album artist")}</th><th>${t("Album")}</th>` : ""}<th>${t("Fichier")}</th><th>kbps</th></tr></thead>
         <tbody>${tracks.map((tk) => `
           <tr>
             <td>${playBtn(tk)}</td>
             <td>${input(tk, "disc")}</td><td>${input(tk, "track")}</td><td>${input(tk, "title")}</td><td>${input(tk, "artist")}</td>
+            ${loose ? `<td>${input(tk, "albumartist")}</td><td>${input(tk, "album")}</td>` : ""}
             <td class="small mono" title="${esc(tk.filename)}">${esc(tk.filename)}${tk.tagged ? "" : " " + untaggedBadge}${tk.error ? ` <span class="badge b-untagged" title="${esc(tk.error)}">${t("erreur")}</span>` : ""}</td>
             <td class="small">${tk.bitrate || "?"}${tk.bitrate_mode === "VBR" ? "v" : ""}</td>
           </tr>`).join("")}</tbody></table>`;
@@ -700,6 +715,7 @@ async function albumEditor(root, dir, opts = {}) {
             <label>${t("N°")}${input(tk, "track")}</label>
             <label class="wide">${t("Titre")}${input(tk, "title")}</label>
             <label class="wide">${t("Artiste")}${input(tk, "artist")}</label>
+            ${loose ? `<label class="wide">${t("Album artist")}${input(tk, "albumartist")}</label><label class="wide">${t("Album")}${input(tk, "album")}</label>` : ""}
           </div>
           <div class="small tcard-guess">${guessLine(tk)}</div>
           <div class="tcard-actions">
@@ -722,7 +738,7 @@ async function albumEditor(root, dir, opts = {}) {
         const ch = trackDiff(path);
         if (!Object.keys(ch).length) return toast(t("Aucun changement sur ce morceau"));
         await api("POST", "/api/album/save", { dir, album: {}, tracks: { [path]: ch } });
-        orig[path] = { ...orig[path], ...Object.fromEntries(TRACK_FIELDS.filter((f) => f in ch).map((f) => [f, ch[f]])) };
+        orig[path] = { ...orig[path], ...Object.fromEntries(tfields.filter((f) => f in ch).map((f) => [f, ch[f]])) };
         delete extra[path];
         saved.add(path);
         renderTracks();
@@ -767,7 +783,7 @@ async function albumEditor(root, dir, opts = {}) {
   };
 
   const fill = (overwrite) => {
-    for (const tk of tracks) for (const f of TRACK_FIELDS) {
+    for (const tk of tracks) for (const f of tfields) {
       if (tk.guess[f] && (overwrite || !vals[tk.path][f])) vals[tk.path][f] = tk.guess[f];
     }
     renderTracks();
@@ -775,7 +791,28 @@ async function albumEditor(root, dir, opts = {}) {
   };
   $(".ed-fill-empty", root).onclick = () => fill(false);
   $(".ed-fill-all", root).onclick = () => fill(true);
-  $(".ed-artist-aa", root).onclick = () => {
+  if (loose) $(".ed-loose-fill", root).onclick = () => run(async () => {
+    const changes = await api("GET", "/api/album/preview?" + qs({ dir, fields: "loose" }));
+    let n = 0;
+    for (const [path, ch] of Object.entries(changes)) {
+      for (const f of tfields) if (f in ch && (vals[path][f] || "") !== (ch[f] || "")) { vals[path][f] = ch[f] || ""; n++; }
+    }
+    renderTracks();
+    showNumbering();
+    toast(n ? t("{n} champ(s) rempli(s) — enregistrez pour écrire les fichiers", { n }) : t("Chaque fichier est déjà un album"));
+  });
+  const setLoose = (on) => run(async () => {
+    if (pending().length && !confirm(t("Vos modifications non enregistrées seront perdues. Continuer ?"))) {
+      $(".ed-loose", root).checked = loose;
+      return;
+    }
+    await api("POST", "/api/folder/mode", { dir, loose: on });
+    refreshStatus();
+    if (opts.onReload) opts.onReload(); else albumEditor(root, dir, opts);
+  });
+  $(".ed-loose", root).onchange = (e) => setLoose(e.target.checked);
+  if ($(".ed-loose-on", root)) $(".ed-loose-on", root).onclick = () => setLoose(true);
+  if (!loose) $(".ed-artist-aa", root).onclick = () => {
     const aa = albumArtist();
     if (!aa) return toast(t("Album artist vide"), true);
     for (const tk of tracks) vals[tk.path].artist = aa;
@@ -789,7 +826,7 @@ async function albumEditor(root, dir, opts = {}) {
       const k = inp.dataset.album, v = inp.value.trim();
       if (v || dirty.has(k)) albumFields[k] = v;
     }
-    albumFields.compilation = $(".ed-compil", root).checked ? "1" : "";
+    albumFields.compilation = $(".ed-compil", root) && $(".ed-compil", root).checked ? "1" : "";
     const edits = {};
     for (const tk of tracks) {
       const ch = trackDiff(tk.path);
@@ -834,7 +871,7 @@ async function albumEditor(root, dir, opts = {}) {
     opts.onReload && opts.onReload();
   });
   const reloadAfterMb = () => { refreshStatus(); if (opts.onReload) opts.onReload(); else albumEditor(root, dir, opts); };
-  $(".ed-mb-open", root).onclick = () => mbPanel(root, dir, tracks, { artist: albumArtist(), album: $('[data-album="album"]', root).value },
+  $(".ed-mb-open", root).onclick = () => mbPanel(root, dir, tracks, { artist: albumArtist(), album: ($('[data-album="album"]', root) || { value: "" }).value },
     reloadAfterMb, { pending, save });
 
   return { save, pending, album: a };

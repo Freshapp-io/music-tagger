@@ -114,8 +114,9 @@ def index():
     return FileResponse(os.path.join(STATIC, "index.html"))
 
 
-def _album(r, ignored=()):
+def _album(r, ignored=(), loose=()):
     d = dict(r)
+    d["mode"] = "loose" if d.get("dir") in loose else None
     for k in ("artists", "albumartists", "albums", "years", "issues", "suggestion", "misplaced"):
         if k in d and d[k] is not None:
             d[k] = json.loads(d[k])
@@ -224,7 +225,8 @@ def albums(issue: str = "all", q: str = "", sub: str = "", confidence: str = "",
         rows = c.execute(f"SELECT * {sql} ORDER BY {SORTS.get(sort, SORTS['dir'])} LIMIT ? OFFSET ?",
                          params + [min(limit, 1000), offset]).fetchall()
         ign = _ignores(c)
-    return {"total": total, "items": [_album(r, ign.get(r["dir"], ())) for r in rows]}
+        loose = analysis.loose_dirs(c)
+    return {"total": total, "items": [_album(r, ign.get(r["dir"], ()), loose) for r in rows]}
 
 
 @app.get("/api/album")
@@ -235,11 +237,12 @@ def album(dir: str):
             raise HTTPException(404, "dossier inconnu (relancez un scan ?)")
         tracks = fixes.tracks_of(c, dir)
         ign = _ignores(c).get(dir, ())
+        loose = analysis.loose_dirs(c)
         others = []
         if a["dup_group"]:
             others = [_album(r) for r in c.execute(
                 "SELECT * FROM albums WHERE dup_group=? AND dir<>?", (a["dup_group"], dir))]
-    alb = _album(a, ign)
+    alb = _album(a, ign, loose)
     # Context: the folder holding this album and the other albums it contains.
     parent = os.path.dirname(dir)
     siblings = []
@@ -275,6 +278,23 @@ def album_delete(req: DirsReq):
         raise HTTPException(400, "aucun dossier")
     with jobs.acquire_or_busy():
         return fixes.delete_albums(req.dirs)
+
+
+class FolderModeReq(BaseModel):
+    dir: str
+    loose: bool
+
+
+@app.post("/api/folder/mode")
+def folder_mode(req: FolderModeReq):
+    """'Independent tracks' (mixtapes, singles): every file is its own album."""
+    with db.session() as c:
+        if req.loose:
+            c.execute("INSERT OR REPLACE INTO folder_modes(dir, mode) VALUES (?, 'loose')", (req.dir,))
+        else:
+            c.execute("DELETE FROM folder_modes WHERE dir=?", (req.dir,))
+    analysis.analyze_dirs([req.dir])
+    return {"ok": True}
 
 
 class SaveReq(BaseModel):

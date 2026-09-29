@@ -19,7 +19,7 @@ Application web (Docker) pour nettoyer les tags d'une grosse bibliothèque MP3,
 typiquement servie par [Navidrome](https://www.navidrome.org/).
 
 - **Nom technique** : `freshapp-music-tagger`
-- **Version** : 1.10.0
+- **Version** : 1.11.0
 - **Auteur** : FreshApp.io
 
 ### Fonctionnement
@@ -81,6 +81,11 @@ nom du dossier, titres et numéros de piste déduits des noms de fichiers.
 - **Thème** : clair, sombre, ou automatique (suit le système), au choix en bas du menu.
 - **Langue** : interface en français ou en anglais (sélecteur FR / EN ; par défaut, la langue du navigateur).
 - **Emplacement** : en éditant un album, le chemin du dossier (cliquable) et les autres albums du même dossier.
+- **Pistes indépendantes** (mixtapes, singles) : un dossier peut être passé dans ce mode depuis sa
+  fiche (proposé automatiquement quand il contient des fichiers longs d'artistes ou d'albums
+  différents). Chaque fichier devient un album de son artiste : album artist = artiste du fichier,
+  album = son album ou son titre, n° 1/1, sans compilation. Le dossier n'est plus comparé comme
+  un seul album (ni « Tags incohérents », ni « Various Artists », ni doublons).
 - **Numérotation** : dans la fiche d'un album, le menu *Numérotation…* harmonise les n° de piste
   (`4` ou `4/14` partout, total calculé par disque) et les n° de disque (vider, numéro seul, avec
   total) ; un avertissement signale les albums à la numérotation hétérogène.
@@ -227,7 +232,7 @@ Dockerised web app to clean up the tags of a large MP3 library, typically
 served by [Navidrome](https://www.navidrome.org/).
 
 - **Technical name**: `freshapp-music-tagger`
-- **Version**: 1.10.0
+- **Version**: 1.11.0
 - **Author**: FreshApp.io
 
 ### How it works
@@ -286,6 +291,11 @@ the folder name, titles and track numbers derived from file names.
 - **Theme**: light, dark, or automatic (follows the system), chosen at the bottom of the menu.
 - **Language**: French or English interface (FR / EN switch; defaults to the browser language).
 - **Location**: when editing an album, the folder path (clickable) and the other albums of the same folder.
+- **Independent tracks** (mixtapes, singles): a folder can be switched to this mode from its panel
+  (suggested automatically when it holds long files by different artists or from different
+  albums). Every file becomes an album of its artist: album artist = the file's artist, album =
+  its album or title, number 1/1, no compilation. The folder is no longer checked as one album
+  (no "Inconsistent tags", "Various Artists" or duplicates).
 - **Numbering**: in the album panel, the *Numbering…* menu harmonises track numbers (`4` or
   `4/14` everywhere, total computed per disc) and disc numbers (clear, number only, with the
   total); a warning flags albums with mixed numbering.
