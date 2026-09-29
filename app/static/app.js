@@ -11,6 +11,7 @@ const fmtSize = (b) => b >= 1e9 ? (b / 1e9).toFixed(1) + " " + t("Go") : b >= 1e
 const fmtDur = (s) => { s = Math.round(s || 0); const m = Math.floor(s / 60); return `${m}:${String(s % 60).padStart(2, "0")}`; };
 const fold = (s) => String(s ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^\w]+/g, " ").trim();
 const COLON = LANG === "fr" ? "\u00a0: " : ": ";   // French typography puts a space before ":"
+const tip = (key) => ` title="${esc(t(key))}"`;   // tooltip attribute
 const newWindow = () => `<span class="visually-hidden"> ${t("(nouvelle fenêtre)")}</span>`;
 
 async function api(method, url, body) {
@@ -128,10 +129,10 @@ async function renderDashboard(main) {
       ${s.root_exists ? "" : `<b style="color:var(--bad)"> — ${t("introuvable, vérifiez le volume Docker")}</b>`}<br>
       ${t("Dernier scan :")} ${s.last_scan ? esc(s.last_scan.replace("T", " ")) : t("jamais")}</p>
     <div class="toolbar">
-      <button class="primary" id="scan">${t("Scanner (nouveaux / modifiés)")}</button>
-      <button id="fullscan">${t("Scan complet")}</button>
-      <button id="reanalyze">${t("Recalculer l'analyse")}</button>
-      ${s.navidrome ? `<button id="navidrome">${t("Lancer un scan Navidrome")}</button>` : ""}
+      <button class="primary" id="scan"${tip("tip.scan")}>${t("Scanner (nouveaux / modifiés)")}</button>
+      <button id="fullscan"${tip("tip.fullscan")}>${t("Scan complet")}</button>
+      <button id="reanalyze"${tip("tip.reanalyze")}>${t("Recalculer l'analyse")}</button>
+      ${s.navidrome ? `<button id="navidrome"${tip("tip.navidrome")}>${t("Lancer un scan Navidrome")}</button>` : ""}
     </div>
     <div class="cards">
       ${card("#/all", s.tracks, t("fichiers mp3"))}
@@ -155,7 +156,7 @@ async function renderDashboard(main) {
     <h2>${t("Corbeille")}</h2>
     <div class="panel">
       ${trash ? `<span class="mono">${esc(trash.path)}</span> — ${t("{n} fichier(s)", { n: trash.files })}, ${fmtSize(trash.size)}` : "—"}
-      ${trash && trash.files ? `<button class="danger" id="empty-trash" style="margin-left:12px">${t("Vider définitivement")}</button>` : ""}
+      ${trash && trash.files ? `<button class="danger" id="empty-trash"${tip("tip.emptytrash")} style="margin-left:12px">${t("Vider définitivement")}</button>` : ""}
     </div>`;
   $("#scan").onclick = () => run(async () => { await api("POST", "/api/scan", { full: false }); lastJobStatus = "running"; refreshStatus(); });
   $("#fullscan").onclick = () => confirm(t("Relire tous les fichiers ? (long sur une grosse bibliothèque)")) &&
@@ -193,7 +194,7 @@ async function renderList(main, view) {
       ${view !== "all" ? `<label><input type="checkbox" id="showIgnored" ${st.showIgnored ? "checked" : ""}> ${t("afficher les ignorés")}</label>` : ""}
       <span class="grow"></span>
       ${!NO_FIX.includes(view) ? `<button id="autotag" title="${t("Chercher chaque album sur MusicBrainz et le noter")}">⚡ ${t("Tag auto")}</button>` : ""}
-      ${view !== "all" ? `<button class="primary" id="review">▶ ${t("Revue album par album")}</button>` : ""}
+      ${view !== "all" ? `<button class="primary" id="review"${tip("tip.review")}>▶ ${t("Revue album par album")}</button>` : ""}
     </div>
     <div id="batch"></div>
     <div id="list"><div class="empty">${t("Chargement…")}</div></div>`;
@@ -331,9 +332,9 @@ function renderBatch(view, total) {
     ${n ? `<button class="link" id="selnone">${t("Désélectionner")}</button>` : ""}
     <span style="flex:1"></span>
     ${view !== "all" ? `
-      ${!NO_FIX.includes(view) ? `<button class="primary" id="apply" ${n ? "" : "disabled"}>${t("Appliquer les suggestions")}</button>` : ""}
-      ${view === "various" ? `<button id="compil" ${n ? "" : "disabled"}>${t("Marquer comme compilations")}</button>` : ""}
-      <button id="ignore" ${n ? "" : "disabled"}>${st.showIgnored ? t("Ne plus ignorer") : t("Ignorer")}</button>` : ""}
+      ${!NO_FIX.includes(view) ? `<button class="primary" id="apply"${tip("tip.apply")} ${n ? "" : "disabled"}>${t("Appliquer les suggestions")}</button>` : ""}
+      ${view === "various" ? `<button id="compil"${tip("tip.compil")} ${n ? "" : "disabled"}>${t("Marquer comme compilations")}</button>` : ""}
+      <button id="ignore"${tip("tip.ignore")} ${n ? "" : "disabled"}>${st.showIgnored ? t("Ne plus ignorer") : t("Ignorer")}</button>` : ""}
   </div>`;
   $("#selall").onclick = () => run(async () => {
     for (let off = 0; off < total; off += 1000) {
@@ -515,19 +516,19 @@ async function albumEditor(root, dir, opts = {}) {
         <button data-view="table">${t("Tableau")}</button><button data-view="cards">${t("Piste par piste")}</button>
       </div>
       <span class="grow"></span>
-      <button class="ed-fill-empty">${t("Compléter les vides depuis les noms de fichiers")}</button>
-      <button class="ed-fill-all">${t("Tout remplacer depuis les noms de fichiers")}</button>
-      <button class="ed-artist-aa">${t("Artiste = album artist")}</button>
+      <button class="ed-fill-empty"${tip("tip.fillempty")}>${t("Compléter les vides depuis les noms de fichiers")}</button>
+      <button class="ed-fill-all"${tip("tip.fillall")}>${t("Tout remplacer depuis les noms de fichiers")}</button>
+      <button class="ed-artist-aa"${tip("tip.artistaa")}>${t("Artiste = album artist")}</button>
     </div>
     <div class="ed-tracks"></div>
 
     <div class="actions">
-      ${opts.review ? "" : `<button class="primary ed-save">${t("Enregistrer les tags")}</button>`}
+      ${opts.review ? "" : `<button class="primary ed-save"${tip("tip.save")}>${t("Enregistrer les tags")}</button>`}
       <button class="ed-mb-open">${status && status.discogs ? t("Chercher l'album (MusicBrainz, Discogs)") : t("Chercher l'album sur MusicBrainz")}</button>
       ${opts.review ? "" : a.issues.filter((i) => ISSUE[i]).map((i) => a.ignored.includes(i)
-        ? `<button data-unignore="${i}">${t("Ne plus ignorer ({issue})", { issue: ISSUE[i] })}</button>`
-        : `<button data-ignore="${i}">${t("Ignorer ({issue})", { issue: ISSUE[i] })}</button>`).join("")}
-      <button class="danger ed-delete">${t("Supprimer l'album")}</button>
+        ? `<button data-unignore="${i}"${tip("tip.unignoreone")}>${t("Ne plus ignorer ({issue})", { issue: ISSUE[i] })}</button>`
+        : `<button data-ignore="${i}"${tip("tip.ignoreone")}>${t("Ignorer ({issue})", { issue: ISSUE[i] })}</button>`).join("")}
+      <button class="danger ed-delete"${tip("tip.delete")}>${t("Supprimer l'album")}</button>
     </div>
 
     <div class="panel hidden ed-mb" style="margin-top:16px"></div>
@@ -838,7 +839,7 @@ async function mbMatch(panel, dir, tracks, releaseId, onApplied, editor) {
       return { path: row.dataset.path, index: v === "" ? null : Number(v) };
     });
     const n = map.filter((m) => m.index !== null).length;
-    if (!n) return toast(t("Aucun fichier associé à une piste MusicBrainz : choisissez les correspondances dans le tableau"), true);
+    if (!n) return toast(t("Aucun fichier associé à une piste : choisissez les correspondances dans le tableau"), true);
     const todo = editor ? editor.pending() : [];
     const key = isDiscogs ? "confirm.discogs" : "confirm.mb";
     const msg = todo.length ? t(key + ".pending", { list: todo.join(", "), n }) : t(key, { n });
@@ -1004,7 +1005,7 @@ async function renderDuplicates(main) {
       <input type="search" id="dq" placeholder="${t("Filtrer…")}" value="${esc(dupState.q)}" style="width:300px">
       <label><input type="checkbox" id="dign" ${dupState.showIgnored ? "checked" : ""}> ${t("afficher les ignorés")}</label>
       <span class="grow"></span>
-      <button class="primary" id="dreview">▶ ${t("Revue groupe par groupe")}</button>
+      <button class="primary" id="dreview"${tip("tip.dupreview")}>▶ ${t("Revue groupe par groupe")}</button>
     </div>
     <div id="dbatch"></div><div id="dlist"><div class="empty">${t("Chargement…")}</div></div>`;
   let timer;
@@ -1034,7 +1035,7 @@ async function loadDuplicates() {
         <b>${esc(m0.main_artist || "?")} — ${esc(m0.main_album || "?")}</b>
         <span class="muted small">${t("{n} versions", { n: g.members.length })}</span>
         <span style="flex:1"></span>
-        <button class="link gignore">${g.members.every((m) => m.ignored.includes("duplicate")) ? t("Ne plus ignorer") : t("Pas des doublons (ignorer)")}</button>
+        <button class="link gignore"${tip("tip.dupignore")}>${g.members.every((m) => m.ignored.includes("duplicate")) ? t("Ne plus ignorer") : t("Pas des doublons (ignorer)")}</button>
       </div>
       <table><thead><tr><th>${t("Garder")}</th>${dupHeaders()}</tr></thead>
       <tbody>${g.members.map((m) => `
@@ -1082,7 +1083,7 @@ function renderDupBatch(groups) {
     <button class="link" id="dselpage">${t("Sélectionner les groupes de la page")}</button>
     ${n ? `<button class="link" id="dselnone">${t("Désélectionner")}</button>` : ""}
     <span style="flex:1"></span>
-    <button class="danger solid" id="dresolve" ${n ? "" : "disabled"}>${t("Garder la version choisie, mettre les autres à la corbeille")}</button>
+    <button class="danger solid" id="dresolve"${tip("tip.dupresolve")} ${n ? "" : "disabled"}>${t("Garder la version choisie, mettre les autres à la corbeille")}</button>
   </div>`;
   $("#dselpage").onclick = () => { groups.forEach((g) => dupState.selected.add(g.id)); loadDuplicates(); };
   if ($("#dselnone")) $("#dselnone").onclick = () => { dupState.selected.clear(); loadDuplicates(); };
@@ -1205,7 +1206,7 @@ function drawGenres() {
         <td><select class="g-target" style="width:100%">${options(r)}</select></td>
         <td style="white-space:nowrap;text-align:right">
           <button class="link g-detail">${t("Dossiers")}</button>
-          <button class="g-apply">${t("Appliquer")}</button></td>
+          <button class="g-apply"${tip("tip.genreapply")}>${t("Appliquer")}</button></td>
       </tr><tr class="hidden"><td colspan="7" class="g-detail-box"></td></tr>`).join("")}
     </tbody></table>
     ${rows.length > 600 ? `<div class="muted small">… ${t("{n} valeurs de plus, affinez le filtre", { n: rows.length - 600 })}</div>` : ""}`;
@@ -1393,8 +1394,8 @@ function drawAutotagBatch(rows) {
     <b>${t("{n} dossier(s) sélectionné(s)", { n: sel.length })}</b>
     ${risky.length ? `<span class="conf-medium small">${t("dont {n} sous le seuil ou ambigu(s)", { n: risky.length })}</span>` : ""}
     <span style="flex:1"></span>
-    <button id="at-reanalyse" ${sel.length ? "" : "disabled"}>${t("Réanalyser")}</button>
-    <button class="primary" id="at-apply" ${sel.length ? "" : "disabled"}>${t("Appliquer à la sélection")}</button></div>`;
+    <button id="at-reanalyse"${tip("tip.atreanalyse")} ${sel.length ? "" : "disabled"}>${t("Réanalyser")}</button>
+    <button class="primary" id="at-apply"${tip("tip.atapply")} ${sel.length ? "" : "disabled"}>${t("Appliquer à la sélection")}</button></div>`;
   $("#at-reanalyse").onclick = () => run(async () => {
     await api("POST", "/api/autotag/analyse", { dirs: sel, force: true });
     lastJobStatus = "running"; refreshStatus();
@@ -1423,7 +1424,7 @@ async function renderErrors(main) {
     <div class="toolbar">
       <input type="search" id="eq" placeholder="${t("Filtrer…")}" value="${esc(errState.q)}" style="width:300px">
       <span class="grow"></span>
-      <button id="eretry-all">${t("Tout réessayer")}</button>
+      <button id="eretry-all"${tip("tip.retryall")}>${t("Tout réessayer")}</button>
     </div>
     <div id="elist"><div class="empty">${t("Chargement…")}</div></div>`;
   let timer;
@@ -1461,7 +1462,7 @@ async function loadErrors() {
       <td style="white-space:nowrap;text-align:right">
         ${d.album ? `<button class="link e-open">${t("Ouvrir")}</button>` : ""}
         <button class="e-retry" title="${t("Relire les fichiers de ce dossier")}">${t("Réessayer")}</button>
-        ${d.unlisted ? "" : `<button class="danger e-delete">${t("Supprimer")}</button>`}</td>
+        ${d.unlisted ? "" : `<button class="danger e-delete"${tip("tip.delete")}>${t("Supprimer")}</button>`}</td>
     </tr>`).join("")}</tbody></table>
     <div class="small muted" style="margin-top:8px">${t("{n} dossier(s)", { n: fmtNum(data.total) })}</div>`;
   for (const row of $$("tr[data-dir]", box)) {
@@ -1495,7 +1496,7 @@ async function renderHistory(main) {
       <button class="link" id="h-selnone">${t("Désélectionner")}</button>
       <span style="flex:1"></span>
       <button class="danger" id="h-delete" ${sel.size ? "" : "disabled"}>${t("Supprimer de l'historique")}</button>
-      <button class="danger solid" id="h-clear">${t("Vider l'historique")}</button>
+      <button class="danger solid" id="h-clear"${tip("tip.historyclear")}>${t("Vider l'historique")}</button>
     </div>
     <table><thead><tr><th class="check"></th><th>${t("Date")}</th><th>${t("Action")}</th><th>${t("Fichiers")}</th><th class="hide-sm">${t("Taille")}</th><th>${t("État")}</th><th></th></tr></thead><tbody>
       ${rows.map((r) => `<tr data-batch="${esc(r.batch)}">
@@ -1506,7 +1507,7 @@ async function renderHistory(main) {
         <td class="small muted hide-sm">${fmtSize(r.bytes)}</td>
         <td>${r.purged === 2 ? `<span class="muted">${t("définitif")}</span>` : r.undone ? `<span class="muted">${t("annulé")}</span>` : `<span class="conf-high">${t("appliqué")}</span>`}</td>
         <td style="text-align:right;white-space:nowrap"><button class="link detail">${t("Détails")}</button>
-          ${!r.undone ? `<button class="undo">${t("Annuler")}</button>` : ""}
+          ${!r.undone ? `<button class="undo"${tip("tip.undo")}>${t("Annuler")}</button>` : ""}
           <button class="link h-del" title="${t("Supprimer de l'historique")}">✕</button></td>
       </tr><tr class="hidden"><td colspan="7" class="detail-box"></td></tr>`).join("")}
     </tbody></table>` : `<div class="empty">${t("Aucune modification pour l'instant")}</div>`}`;
