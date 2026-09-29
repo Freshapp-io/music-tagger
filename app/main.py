@@ -27,7 +27,7 @@ async def lifespan(_app):
 app = FastAPI(title=config.APP_NAME, version=config.VERSION, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
-ISSUE_KINDS = ("untagged", "various", "inconsistent", "duplicate")
+ISSUE_KINDS = ("untagged", "various", "inconsistent", "duplicate", "misplaced")
 
 
 @app.exception_handler(jobs.Busy)
@@ -116,7 +116,7 @@ def index():
 
 def _album(r, ignored=()):
     d = dict(r)
-    for k in ("artists", "albumartists", "albums", "years", "issues", "suggestion"):
+    for k in ("artists", "albumartists", "albums", "years", "issues", "suggestion", "misplaced"):
         if k in d and d[k] is not None:
             d[k] = json.loads(d[k])
     d.pop("titles", None)
@@ -132,6 +132,10 @@ def _ignores(c):
 
 
 # ------------------------------------------------------------------- status
+
+# Folders holding files that could not be read: unreadable during the scan,
+# or read but rejected by mutagen (corrupt / not really an mp3).
+ERROR_DIRS = "SELECT dir FROM scan_errors UNION SELECT dir FROM tracks WHERE error IS NOT NULL"
 
 @app.get("/api/status")
 def status():
@@ -149,6 +153,7 @@ def status():
             if r["dup_group"] and "duplicate" not in ign.get(r["dir"], ()):
                 dup_groups.add(r["dup_group"])
         counts["duplicate_groups"] = len(dup_groups)
+        counts["errors"] = c.execute(f"SELECT COUNT(*) FROM ({ERROR_DIRS})").fetchone()[0]
         opts = {**autotag.DEFAULT_OPTIONS, **db.get_meta(c, "autotag_options", {})}
         ready = 0
         for r in c.execute("SELECT status, score, release_id, details FROM autotag WHERE status <> 'applied'"):
@@ -260,6 +265,18 @@ def album(dir: str):
             "library": config.MUSIC_ROOT.name or "/", "siblings": siblings[:80], "n_siblings": len(siblings)}
 
 
+class DirsReq(BaseModel):
+    dirs: list[str]
+
+
+@app.post("/api/album/delete")
+def album_delete(req: DirsReq):
+    if not req.dirs:
+        raise HTTPException(400, "aucun dossier")
+    with jobs.acquire_or_busy():
+        return fixes.delete_albums(req.dirs)
+
+
 class SaveReq(BaseModel):
     dir: str
     album: dict = {}
@@ -328,6 +345,40 @@ def ignore(req: IgnoreReq):
             else:
                 c.execute("DELETE FROM ignores WHERE dir=? AND kind=?", (d, req.kind))
     return {"ok": True}
+
+
+# ------------------------------------------------------------------- errors
+
+@app.get("/api/errors")
+def errors(q: str = ""):
+    """Folders with unreadable files, each with its files and error messages."""
+    with db.session() as c:
+        rows = c.execute("""
+            SELECT path, dir, is_dir, error FROM scan_errors
+            UNION ALL SELECT path, dir, 0, error FROM tracks WHERE error IS NOT NULL
+            ORDER BY dir COLLATE NOCASE, path""").fetchall()
+        known = {r["dir"]: dict(r) for r in c.execute(
+            f"SELECT dir, n_tracks, total_size FROM albums WHERE dir IN ({ERROR_DIRS})")}
+    out = {}
+    for r in rows:
+        if q and q.lower() not in r["dir"].lower():
+            continue
+        d = out.setdefault(r["dir"], {"dir": r["dir"], "unlisted": False, "files": [],
+                                      "album": known.get(r["dir"])})
+        if r["is_dir"]:
+            d["unlisted"] = True
+            d["error"] = r["error"]
+        else:
+            d["files"].append({"path": r["path"], "filename": os.path.basename(r["path"]), "error": r["error"]})
+    return {"total": len(out), "items": list(out.values())}
+
+
+@app.post("/api/errors/retry")
+def errors_retry(req: DirsReq):
+    with jobs.acquire_or_busy():
+        left = sum(scanner.retry_dir(d) for d in req.dirs)
+        analysis.analyze_dirs(req.dirs)
+    return {"remaining": left}
 
 
 # --------------------------------------------------------------- duplicates
@@ -546,9 +597,24 @@ def history(limit: int = 100):
     with db.session() as c:
         rows = c.execute("""
             SELECT batch, MIN(ts) ts, MAX(label) label, COUNT(*) n,
-                   SUM(action='trash') n_trash, MIN(undone) undone, MAX(undone) purged
+                   SUM(action='trash') n_trash, MIN(undone) undone, MAX(undone) purged,
+                   SUM(LENGTH(before) + LENGTH(after) + LENGTH(path) + LENGTH(label) + 40) bytes
             FROM history GROUP BY batch ORDER BY MIN(id) DESC LIMIT ?""", (limit,)).fetchall()
-    return [dict(r) for r in rows]
+    return {"items": [dict(r) for r in rows], "stats": fixes.history_stats()}
+
+
+class HistoryDeleteReq(BaseModel):
+    batches: list[str] = []
+    all: bool = False
+
+
+@app.post("/api/history/delete")
+def history_delete(req: HistoryDeleteReq):
+    """Forget history entries (the files are not touched)."""
+    if not req.all and not req.batches:
+        raise HTTPException(400, "aucune entrée")
+    with jobs.acquire_or_busy():
+        return fixes.delete_history(None if req.all else req.batches)
 
 
 @app.get("/api/history/{batch}")

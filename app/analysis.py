@@ -2,11 +2,12 @@
 issues, a suggested fix, a quality score and duplicate groups."""
 import difflib
 import json
+import re
 from collections import Counter, defaultdict
 
 from . import db
 from .parsing import (
-    GENERIC_TITLE, disc_of, fix_mojibake, fold, is_various, norm_album, norm_title, parse_dir,
+    DISC_DIR, GENERIC_TITLE, disc_of, fix_mojibake, fold, is_various, norm_album, norm_title, parse_dir,
     parse_filename, primary_artist,
 )
 
@@ -16,7 +17,7 @@ ALBUM_COLUMNS = [
     "dir", "n_tracks", "n_untagged", "n_incomplete", "artists", "albumartists", "albums", "years",
     "main_artist", "main_album", "main_year", "avg_bitrate", "min_bitrate", "vbr", "total_size",
     "duration", "has_cover", "has_mbid", "issues", "suggestion", "quality", "dup_group",
-    "norm_artist", "norm_album", "titles",
+    "norm_artist", "norm_album", "titles", "tag_artist", "misplaced",
 ]
 
 
@@ -93,6 +94,22 @@ def suggest(rel_dir, tracks):
     }
 
 
+def tag_artist(tracks):
+    """Album artist the tags themselves agree on (80 % of the tracks), from the
+    album artist or else the main artist. None for compilations or when unsure:
+    the folder name is never used here."""
+    if any(t["compilation"] for t in tracks):
+        return None
+    for field in ("albumartist", "artist"):
+        values = [primary_artist(t[field]) for t in tracks]
+        if any(is_various(v) for v in values):
+            return None
+        best, share = majority(values)
+        if best and share >= 0.8:
+            return best
+    return None
+
+
 def album_row(rel_dir, tracks):
     n = len(tracks)
     tagged = [t for t in tracks if t["tagged"]]
@@ -160,6 +177,7 @@ def album_row(rel_dir, tracks):
         "norm_artist": "various" if main_artist and is_various(main_artist) else fold(primary_artist(main_artist)),
         "norm_album": norm_album(main_album),
         "titles": json.dumps(titles, ensure_ascii=False),
+        "tag_artist": tag_artist(tracks), "misplaced": None,
     }
     row["quality"] = quality(row, 1.0)
     return row
@@ -207,7 +225,7 @@ def analyze_all():
         rows = [album_row(d, ts) for d, ts in by_dir.items()]
         c.execute("DELETE FROM albums")
         _insert(c, rows)
-    compute_duplicates()
+    post_process()
 
 
 def analyze_dirs(dirs):
@@ -217,7 +235,13 @@ def analyze_dirs(dirs):
         for d in dirs:
             c.execute("DELETE FROM albums WHERE dir=?", (d,))
         _insert(c, [album_row(d, ts) for d, ts in by_dir.items()])
+    post_process()
+
+
+def post_process():
+    """Checks that compare folders with each other (run after any change)."""
     compute_duplicates()
+    compute_misplaced()
 
 
 # ---------------------------------------------------------------- duplicates
@@ -311,3 +335,87 @@ def compute_duplicates():
                 c.execute("UPDATE albums SET issues=?, quality=? WHERE dir=?",
                           (json.dumps(issues), quality(a, 1.0), a["dir"]))
     return groups
+
+
+# ----------------------------------------------------------------- misplaced
+
+def _artist_key(s):
+    k = fold(primary_artist(s))
+    return k[4:] if k.startswith("the ") else k
+
+
+def _same_artist(a, b):
+    ka, kb = _artist_key(a), _artist_key(b)
+    if not ka or not kb or ka == kb:
+        return True
+    short, long_ = sorted((ka, kb), key=len)
+    # 'Jay-Z' / 'Jay-Z & Kanye West', or a small spelling difference
+    return bool(re.search(r"\b" + re.escape(short) + r"\b", long_)) or \
+        difflib.SequenceMatcher(None, ka, kb).ratio() >= 0.85
+
+
+def _album_folder(rel_dir):
+    """'Nas/Illmatic/CD1' -> ['Nas', 'Illmatic']: disc sub-folders belong to the album."""
+    parts = rel_dir.split("/")
+    if len(parts) > 1 and DISC_DIR.match(parts[-1]):
+        parts = parts[:-1]
+    return parts
+
+
+def find_misplaced(albums):
+    """albums: dicts with dir, tag_artist, artists (json). Returns {dir: info} for the albums
+    whose folder names an artist of the library while the tags name another.
+    The folder is taken from the 'Artist - Album' folder name, else from the
+    nearest parent folder named after a known artist."""
+    # Artists of the library: album artists, and track artists (a folder named
+    # after an artist who only appears as a track artist is still theirs).
+    known = {_artist_key(a["tag_artist"]) for a in albums if a["tag_artist"]}
+    for a in albums:
+        known.update(_artist_key(x) for x in json.loads(a.get("artists") or "[]") if not is_various(x))
+    known.discard("")
+    # Existing folders named after an artist: where a misplaced album should go.
+    homes = defaultdict(Counter)
+    for a in albums:
+        parts = _album_folder(a["dir"])
+        for i in range(len(parts) - 1):
+            k = _artist_key(parts[i])
+            if k in known:
+                homes[k]["/".join(parts[:i + 1])] += 1
+    out = {}
+    for a in albums:
+        artist = a["tag_artist"]
+        if not artist:
+            continue
+        parts = _album_folder(a["dir"])
+        candidates = []
+        if " - " in parts[-1]:
+            left = parts[-1].split(" - ", 1)[0].strip()
+            if not re.fullmatch(r"[\d\s.()\[\]-]+", left):
+                candidates.append((left, None))
+        candidates += [(parts[i], "/".join(parts[:i + 1])) for i in range(len(parts) - 2, -1, -1)]
+        found = next(((name, folder) for name, folder in candidates if _artist_key(name) in known), None)
+        if not found or _same_artist(found[0], artist):
+            continue
+        # The right artist appears somewhere in the path: not misplaced ('Jay-Z/Jay-Z & Nas - …').
+        if re.search(r"\b" + re.escape(_artist_key(artist)) + r"\b", fold(a["dir"])):
+            continue
+        home = homes.get(_artist_key(artist))
+        target = None
+        if home:
+            rest = a["dir"].split("/")[len(parts) - 1:]
+            target = home.most_common(1)[0][0] + "/" + "/".join(rest)
+        out[a["dir"]] = {"folder_artist": found[0], "folder": found[1], "tag_artist": artist, "target": target}
+    return out
+
+
+def compute_misplaced():
+    with db.session() as c:
+        albums = [dict(r) for r in c.execute("SELECT dir, tag_artist, artists, issues, misplaced FROM albums")]
+        found = find_misplaced(albums)
+        for a in albums:
+            info = found.get(a["dir"])
+            issues = [i for i in json.loads(a["issues"]) if i != "misplaced"] + (["misplaced"] if info else [])
+            value = json.dumps(info, ensure_ascii=False) if info else None
+            if value != a["misplaced"] or issues != json.loads(a["issues"]):
+                c.execute("UPDATE albums SET misplaced=?, issues=? WHERE dir=?", (value, json.dumps(issues), a["dir"]))
+    return found

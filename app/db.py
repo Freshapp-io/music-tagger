@@ -30,7 +30,9 @@ CREATE TABLE IF NOT EXISTS albums (
     suggestion TEXT,                -- json {albumartist, album, year, compilation, confidence, reason}
     quality REAL,
     dup_group INTEGER,
-    norm_artist TEXT, norm_album TEXT, titles TEXT
+    norm_artist TEXT, norm_album TEXT, titles TEXT,
+    tag_artist TEXT,                -- album artist the tags agree on (None when unsure)
+    misplaced TEXT                  -- json {folder_artist, tag_artist, target} when stored in another artist's folder
 );
 CREATE INDEX IF NOT EXISTS albums_dup ON albums(dup_group);
 
@@ -45,6 +47,12 @@ CREATE TABLE IF NOT EXISTS history (
     before TEXT, after TEXT, undone INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS history_batch ON history(batch);
+
+-- Files or folders the last scan could not read (they are not in `tracks`).
+CREATE TABLE IF NOT EXISTS scan_errors (
+    path TEXT PRIMARY KEY, dir TEXT NOT NULL, is_dir INTEGER DEFAULT 0, error TEXT,
+    ts TEXT DEFAULT (datetime('now', 'localtime'))
+);
 
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 
@@ -75,9 +83,40 @@ def session():
         conn.close()
 
 
+# Columns added after the first release: {table: [(column, type)]}.
+MIGRATIONS = {"albums": [("tag_artist", "TEXT"), ("misplaced", "TEXT")]}
+
+
 def init():
     with session() as c:
         c.executescript(SCHEMA)
+        for table, cols in MIGRATIONS.items():
+            have = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
+            for name, kind in cols:
+                if name not in have:
+                    c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
+
+
+def size_on_disk():
+    """Database file plus its write-ahead log, in bytes."""
+    total = 0
+    for suffix in ("", "-wal"):
+        try:
+            total += config.DB_PATH.with_name(config.DB_PATH.name + suffix).stat().st_size
+        except OSError:
+            pass
+    return total
+
+
+def vacuum():
+    """Give the space of deleted rows back to the file system."""
+    conn = connect()
+    try:
+        conn.isolation_level = None
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.execute("VACUUM")
+    finally:
+        conn.close()
 
 
 def get_meta(c, key, default=None):

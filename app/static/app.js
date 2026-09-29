@@ -36,7 +36,7 @@ async function run(fn) {
   try { return await fn(); } catch (e) { toast(e.message, true); throw e; }
 }
 
-const ISSUE = { untagged: t("Non taggué"), various: t("Various"), inconsistent: t("Incohérent"), duplicate: t("Doublon") };
+const ISSUE = { untagged: t("Non taggué"), various: t("Various"), inconsistent: t("Incohérent"), duplicate: t("Doublon"), misplaced: t("Mauvais dossier") };
 const SUB = {
   albumartist_mixed: t("Album artist différents"),
   albumartist_missing: t("Album artist absent, artistes multiples"),
@@ -106,7 +106,8 @@ async function render() {
   if (view === "review") return renderReview(main);
   if (view === "genres") return renderGenres(main);
   if (view === "autotag") return renderAutotag(main);
-  if (["untagged", "various", "inconsistent", "all"].includes(view)) return renderList(main, view);
+  if (view === "errors") return renderErrors(main);
+  if (["untagged", "various", "inconsistent", "misplaced", "all"].includes(view)) return renderList(main, view);
   main.innerHTML = `<div class="empty">${t("Page inconnue")}</div>`;
 }
 window.addEventListener("hashchange", render);
@@ -135,6 +136,8 @@ async function renderDashboard(main) {
       ${card("#/various", c.various, t("dossiers « Various Artists » suspects"))}
       ${card("#/inconsistent", c.inconsistent, t("dossiers aux tags incohérents"))}
       ${card("#/duplicates", c.duplicate_groups, t("groupes d'albums en double"))}
+      ${card("#/misplaced", c.misplaced, t("albums rangés chez un autre artiste"))}
+      ${card("#/errors", c.errors, t("dossiers avec fichiers illisibles"))}
     </div>
     <h2>${t("Comment ça marche")}</h2>
     <div class="panel">
@@ -165,8 +168,12 @@ const VIEW_INFO = {
   untagged: [t("Fichiers non taggués"), t("lead.untagged")],
   various: [t("Various Artists"), t("lead.various")],
   inconsistent: [t("Tags incohérents"), t("lead.inconsistent")],
+  misplaced: [t("Albums dans un mauvais dossier"), t("lead.misplaced")],
   all: [t("Tous les dossiers"), t("Tous les dossiers contenant des mp3.")],
 };
+
+// Views without "apply the suggestion" / auto-tag: the tags may well be right there.
+const NO_FIX = ["all", "misplaced"];
 
 async function renderList(main, view) {
   const st = stateFor(view);
@@ -181,7 +188,7 @@ async function renderList(main, view) {
       <select id="sort">${Object.entries(sorts).map(([k, v]) => `<option value="${k}" ${st.sort === k ? "selected" : ""}>${v}</option>`).join("")}</select>
       ${view !== "all" ? `<label><input type="checkbox" id="showIgnored" ${st.showIgnored ? "checked" : ""}> ${t("afficher les ignorés")}</label>` : ""}
       <span class="grow"></span>
-      ${view !== "all" ? `<button id="autotag" title="${t("Chercher chaque album sur MusicBrainz et le noter")}">⚡ ${t("Tag auto")}</button>` : ""}
+      ${!NO_FIX.includes(view) ? `<button id="autotag" title="${t("Chercher chaque album sur MusicBrainz et le noter")}">⚡ ${t("Tag auto")}</button>` : ""}
       ${view !== "all" ? `<button class="primary" id="review">▶ ${t("Revue album par album")}</button>` : ""}
     </div>
     <div id="batch"></div>
@@ -216,6 +223,16 @@ function listParams(view, st, extra = {}) {
   return qs({ issue: view, q: st.q, sub: st.sub, confidence: st.confidence, show_ignored: st.showIgnored, sort: st.sort, ...extra });
 }
 
+function misplacedHtml(m) {
+  if (!m) return "";
+  return `<div class="sug">
+    <div>${t("Dossier de")}${COLON}<b>${esc(m.folder_artist)}</b></div>
+    <div>${t("Tags")}${COLON}<b>${esc(m.tag_artist)}</b></div>
+    <div class="small">${m.target ? `${t("Place attendue")}${COLON}<span class="mono">${esc(m.target)}</span>`
+      : `<span class="muted">${t("Aucun dossier « {name} » dans la bibliothèque", { name: esc(m.tag_artist) })}</span>`}</div>
+  </div>`;
+}
+
 function suggestionHtml(a) {
   const s = a.suggestion || {};
   if (!s.albumartist && !s.album) return `<span class="muted">${t("aucune")}</span>`;
@@ -248,7 +265,7 @@ async function loadList(view) {
     <table>
       <thead><tr>
         <th class="check"><input type="checkbox" id="checkall" title="${t("Sélectionner la page")}"></th>
-        <th>${t("Dossier")}</th><th>${t("Tags actuels")}</th><th>${t("Suggestion")}</th><th>${t("Pistes")}</th><th>${t("Qualité")}</th>
+        <th>${t("Dossier")}</th><th>${t("Tags actuels")}</th><th>${view === "misplaced" ? t("Emplacement") : t("Suggestion")}</th><th>${t("Pistes")}</th><th>${t("Qualité")}</th>
       </tr></thead>
       <tbody>${data.items.map((a) => `
         <tr class="clickable" data-dir="${esc(a.dir)}">
@@ -261,7 +278,7 @@ async function loadList(view) {
             <div class="muted">${t("Album artist")}</div>${chips(a.albumartists, 3)}
             <div class="muted">${t("Album")}</div>${chips(a.albums, 2)}
           </td>
-          <td>${suggestionHtml(a)}</td>
+          <td>${view === "misplaced" ? misplacedHtml(a.misplaced) : suggestionHtml(a)}</td>
           <td>${a.n_tracks}${a.n_untagged ? `<div class="small conf-low">${t("{n} sans tag", { n: a.n_untagged })}</div>` : ""}${a.n_incomplete ? `<div class="small conf-medium">${t("{n} incomplet(s)", { n: a.n_incomplete })}</div>` : ""}</td>
           <td class="small">${a.avg_bitrate} kbps${a.vbr ? " VBR" : ""}<div class="muted">${fmtSize(a.total_size)}</div></td>
         </tr>`).join("")}
@@ -301,7 +318,7 @@ function renderBatch(view, total) {
     ${n ? `<button class="link" id="selnone">${t("Désélectionner")}</button>` : ""}
     <span style="flex:1"></span>
     ${view !== "all" ? `
-      <button class="primary" id="apply" ${n ? "" : "disabled"}>${t("Appliquer les suggestions")}</button>
+      ${!NO_FIX.includes(view) ? `<button class="primary" id="apply" ${n ? "" : "disabled"}>${t("Appliquer les suggestions")}</button>` : ""}
       ${view === "various" ? `<button id="compil" ${n ? "" : "disabled"}>${t("Marquer comme compilations")}</button>` : ""}
       <button id="ignore" ${n ? "" : "disabled"}>${st.showIgnored ? t("Ne plus ignorer") : t("Ignorer")}</button>` : ""}
   </div>`;
@@ -410,7 +427,11 @@ function folderContext(d) {
     others = `<div class="small muted">${t("Seul album du dossier « {name} ».", { name: esc(parts[parts.length - 2]) })}</div>`;
   }
   const icon = `<svg class="folder-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.3l2 2h8.7A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>`;
-  return `<nav class="crumbs" aria-label="${t("Emplacement")}">${icon} ${crumbs.join(' <span class="muted">›</span> ')}</nav>${others}`;
+  const m = d.album.misplaced;
+  const wrong = m ? `<div class="notice small">⚠ ${t("Rangé dans le dossier de {folder}, mais les tags indiquent {tags}.", { folder: `<b>${esc(m.folder_artist)}</b>`, tags: `<b>${esc(m.tag_artist)}</b>` })}
+    ${m.target ? `${t("Place attendue")}${COLON}<span class="mono">${esc(m.target)}</span>` : ""}
+    <div class="muted">${t("hint.misplaced")}</div></div>` : "";
+  return `<nav class="crumbs" aria-label="${t("Emplacement")}">${icon} ${crumbs.join(' <span class="muted">›</span> ')}</nav>${others}${wrong}`;
 }
 
 const TRACK_FIELDS = ["disc", "track", "title", "artist"];
@@ -492,6 +513,7 @@ async function albumEditor(root, dir, opts = {}) {
       ${opts.review ? "" : a.issues.filter((i) => ISSUE[i]).map((i) => a.ignored.includes(i)
         ? `<button data-unignore="${i}">${t("Ne plus ignorer ({issue})", { issue: ISSUE[i] })}</button>`
         : `<button data-ignore="${i}">${t("Ignorer ({issue})", { issue: ISSUE[i] })}</button>`).join("")}
+      <button class="danger ed-delete">${t("Supprimer l'album")}</button>
     </div>
 
     <div class="panel hidden ed-mb" style="margin-top:16px"></div>
@@ -670,6 +692,10 @@ async function albumEditor(root, dir, opts = {}) {
   }
 
   if (opts.onClose) $(".ed-close", root).onclick = opts.onClose;
+  $(".ed-delete", root).onclick = async () => {
+    if (!await deleteAlbum(dir, a)) return;
+    if (opts.onDeleted) opts.onDeleted(); else if (opts.onClose) opts.onClose();
+  };
   for (const l of $$("[data-open]", root)) l.onclick = (e) => { e.preventDefault(); openAlbum(l.dataset.open, drawerOnClose); };
   for (const b of $$("[data-browse]", root)) b.onclick = () => browseFolder(b.dataset.browse);
   for (const b of $$("[data-ignore],[data-unignore]", root)) b.onclick = () => run(async () => {
@@ -688,6 +714,17 @@ async function albumEditor(root, dir, opts = {}) {
     reloadAfterMb, { pending, save });
 
   return { save, pending, album: a };
+}
+
+/** Ask, then move the folder's files to the trash. Resolves to true once deleted. */
+async function deleteAlbum(dir, a) {
+  const what = a ? t("{n} pistes, {size}", { n: a.n_tracks, size: fmtSize(a.total_size) }) : t("fichiers illisibles compris");
+  if (!confirm(t("confirm.delete", { dir: dir || "/", what }))) return false;
+  const r = await run(() => api("POST", "/api/album/delete", { dirs: [dir] }));
+  if (r.errors.length) { toast(tr(r.errors[0]), true); return false; }
+  toast(t("Album supprimé — annulable depuis l'historique tant que la corbeille n'est pas vidée"));
+  refreshStatus();
+  return true;
 }
 
 // ------------------------------------------------------------ musicbrainz
@@ -788,7 +825,7 @@ async function mbMatch(panel, dir, tracks, releaseId, onApplied, editor) {
 
 // ------------------------------------------------------------------ review
 const review = { kind: null, label: "", items: [], idx: 0, status: {}, returnTo: "#/" };
-const REVIEW_STATUS = { done: "✓ " + t("validé"), saved: "✎ " + t("enregistré"), skip: "→ " + t("passé"), ignore: "⊘ " + t("ne plus proposer") };
+const REVIEW_STATUS = { done: "✓ " + t("validé"), saved: "✎ " + t("enregistré"), skip: "→ " + t("passé"), ignore: "⊘ " + t("ne plus proposer"), deleted: "✕ " + t("supprimé") };
 
 async function startReview(kind, label, items, returnTo) {
   if (!items.length) return toast(t("Rien à revoir avec ce filtre"));
@@ -797,7 +834,7 @@ async function startReview(kind, label, items, returnTo) {
 }
 
 function reviewCounts() {
-  const c = { done: 0, saved: 0, skip: 0, ignore: 0 };
+  const c = { done: 0, saved: 0, skip: 0, ignore: 0, deleted: 0 };
   Object.values(review.status).forEach((s) => c[s]++);
   return c;
 }
@@ -817,6 +854,7 @@ async function renderReview(main) {
         <div class="card"><div class="num">${c.saved}</div><div class="lbl">${t("enregistrés")}</div></div>
         <div class="card"><div class="num">${c.skip}</div><div class="lbl">${t("passés")}</div></div>
         <div class="card"><div class="num">${c.ignore}</div><div class="lbl">${t("ne plus proposer")}</div></div>
+        ${c.deleted ? `<div class="card"><div class="num">${c.deleted}</div><div class="lbl">${t("supprimés")}</div></div>` : ""}
       </div>
       <div class="toolbar"><button id="rv-prev">← ${t("Revenir au dernier")}</button><a class="btn primary" href="${review.returnTo}">${t("Retour à la liste")}</a></div>`;
     $("#rv-prev").onclick = () => { review.idx = n - 1; renderReview(main); };
@@ -830,7 +868,7 @@ async function renderReview(main) {
       <div class="review-top">
         <b>${t("Revue — {label}", { label: esc(review.label) })}</b>
         <span class="muted">${i + 1} / ${n}</span>
-        <span class="small muted">✓ ${c.done} · ✎ ${c.saved} · → ${c.skip} · ⊘ ${c.ignore}</span>
+        <span class="small muted">✓ ${c.done} · ✎ ${c.saved} · → ${c.skip} · ⊘ ${c.ignore}${c.deleted ? ` · ✕ ${c.deleted}` : ""}</span>
         ${st ? `<span class="chip">${REVIEW_STATUS[st]}</span>` : ""}
         <span class="grow"></span>
         <a href="${review.returnTo}" class="small">${t("Quitter la revue")}</a>
@@ -879,7 +917,10 @@ async function renderReview(main) {
     validate = () => api("POST", "/api/duplicates/resolve", { sync: true, groups: [{ keep, remove: g.members.map((m) => m.dir).filter((x) => x !== keep) }] });
     ignore = () => api("POST", "/api/ignore", { dirs: g.members.map((m) => m.dir), kind: "duplicate", value: true });
   } else {
-    const ed = await albumEditor(body, item, { review: true, onReload: () => renderReview(main) });
+    const ed = await albumEditor(body, item, {
+      review: true, onReload: () => renderReview(main),
+      onDeleted: () => { review.status[i] = "deleted"; go(1); },
+    });
     validate = () => ed.save();
     $("#rv-save").onclick = () => run(async () => {
       if (!ed.pending().length) return toast(t("Rien à enregistrer"));
@@ -1341,24 +1382,131 @@ function drawAutotagBatch(rows) {
   };
 }
 
+// ------------------------------------------------------------------ errors
+const errState = { q: "" };
+
+async function renderErrors(main) {
+  main.innerHTML = `
+    <h1>${t("Fichiers en erreur")}</h1>
+    <p class="lead">${t("lead.errors")}</p>
+    <div class="toolbar">
+      <input type="search" id="eq" placeholder="${t("Filtrer…")}" value="${esc(errState.q)}" style="width:300px">
+      <span class="grow"></span>
+      <button id="eretry-all">${t("Tout réessayer")}</button>
+    </div>
+    <div id="elist"><div class="empty">${t("Chargement…")}</div></div>`;
+  let timer;
+  $("#eq").oninput = (e) => { clearTimeout(timer); timer = setTimeout(() => { errState.q = e.target.value; loadErrors(); }, 300); };
+  $("#eretry-all").onclick = () => run(async () => {
+    const d = await api("GET", "/api/errors?" + qs({ q: errState.q }));
+    await retryErrors(d.items.map((x) => x.dir));
+  });
+  loadErrors();
+}
+
+async function retryErrors(dirs) {
+  if (!dirs.length) return;
+  const r = await api("POST", "/api/errors/retry", { dirs });
+  toast(r.remaining ? t("{n} fichier(s) toujours illisible(s)", { n: r.remaining }) : t("Tout est lisible maintenant"), r.remaining > 0);
+  refreshStatus();
+  loadErrors();
+}
+
+async function loadErrors() {
+  const data = await run(() => api("GET", "/api/errors?" + qs({ q: errState.q })));
+  const box = $("#elist");
+  if (!box) return;
+  if (!data.items.length) { box.innerHTML = `<div class="empty">${t("Aucun fichier en erreur")}</div>`; return; }
+  const MAX = 20;
+  box.innerHTML = `<table><thead><tr><th>${t("Dossier")}</th><th>${t("Fichiers illisibles")}</th><th></th></tr></thead><tbody>
+    ${data.items.map((d) => `<tr data-dir="${esc(d.dir)}">
+      <td><div class="dir">${esc(d.dir || "/")}</div>
+        <div class="small muted">${d.album ? `${t("{n} piste(s) lisible(s)", { n: d.album.n_tracks })} · ${fmtSize(d.album.total_size)}` : t("aucune piste lisible")}</div></td>
+      <td class="small">
+        ${d.unlisted ? `<div class="err-msg">${t("Dossier illisible :")} ${esc(d.error)}</div>` : ""}
+        ${d.files.length ? `<ul class="err-files">${d.files.slice(0, MAX).map((f) => `<li><span class="mono">${esc(f.filename)}</span> — <span class="err-msg">${esc(f.error)}</span></li>`).join("")}</ul>` : ""}
+        ${d.files.length > MAX ? `<div class="muted">… ${t("{n} de plus", { n: d.files.length - MAX })}</div>` : ""}</td>
+      <td style="white-space:nowrap;text-align:right">
+        ${d.album ? `<button class="link e-open">${t("Ouvrir")}</button>` : ""}
+        <button class="e-retry" title="${t("Relire les fichiers de ce dossier")}">${t("Réessayer")}</button>
+        ${d.unlisted ? "" : `<button class="danger e-delete">${t("Supprimer")}</button>`}</td>
+    </tr>`).join("")}</tbody></table>
+    <div class="small muted" style="margin-top:8px">${t("{n} dossier(s)", { n: fmtNum(data.total) })}</div>`;
+  for (const row of $$("tr[data-dir]", box)) {
+    const dir = row.dataset.dir, d = data.items.find((x) => x.dir === dir);
+    if ($(".e-open", row)) $(".e-open", row).onclick = () => openAlbum(dir, loadErrors);
+    $(".e-retry", row).onclick = () => run(() => retryErrors([dir]));
+    if ($(".e-delete", row)) $(".e-delete", row).onclick = async () => { if (await deleteAlbum(dir, d.album)) loadErrors(); };
+  }
+}
+
 // ----------------------------------------------------------------- history
+const histState = { selected: new Set() };
+
 async function renderHistory(main) {
-  const rows = await run(() => api("GET", "/api/history?limit=200"));
+  const { items: rows, stats } = await run(() => api("GET", "/api/history?limit=200"));
+  const sel = histState.selected;
+  for (const b of [...sel]) if (!rows.some((r) => r.batch === b)) sel.delete(b);
   main.innerHTML = `
     <h1>${t("Historique")}</h1>
     <p class="lead">${t("lead.history")}</p>
-    ${rows.length ? `<table><thead><tr><th>${t("Date")}</th><th>${t("Action")}</th><th>${t("Fichiers")}</th><th>${t("État")}</th><th></th></tr></thead><tbody>
+    <div class="panel small">
+      ${t("{b} lot(s), {n} opération(s), environ {size} dans la base (fichier de la base : {db}).", {
+        b: fmtNum(stats.batches), n: fmtNum(stats.entries), size: fmtSize(stats.bytes), db: fmtSize(stats.db_size) })}
+      ${stats.oldest ? t("Plus ancienne entrée : {d}.", { d: esc(stats.oldest) }) : ""}
+      ${stats.batches > rows.length ? `<span class="muted">${t("Seuls les {n} lots les plus récents sont affichés.", { n: rows.length })}</span>` : ""}
+    </div>
+    ${rows.length ? `<div class="batchbar">
+      <b id="h-count"></b>
+      <button class="link" id="h-selall">${t("Tout sélectionner")}</button>
+      <button class="link" id="h-selnone">${t("Désélectionner")}</button>
+      <span style="flex:1"></span>
+      <button class="danger" id="h-delete" ${sel.size ? "" : "disabled"}>${t("Supprimer de l'historique")}</button>
+      <button class="danger solid" id="h-clear">${t("Vider l'historique")}</button>
+    </div>
+    <table><thead><tr><th class="check"></th><th>${t("Date")}</th><th>${t("Action")}</th><th>${t("Fichiers")}</th><th class="hide-sm">${t("Taille")}</th><th>${t("État")}</th><th></th></tr></thead><tbody>
       ${rows.map((r) => `<tr data-batch="${esc(r.batch)}">
+        <td class="check"><input type="checkbox" class="h-sel" ${sel.has(r.batch) ? "checked" : ""}></td>
         <td class="small">${esc(r.ts)}</td>
         <td>${esc(tr(r.label))}</td>
         <td>${r.n}${r.n_trash ? ` <span class="muted small">(${t("{n} dossier(s) en corbeille", { n: r.n_trash })})</span>` : ""}</td>
+        <td class="small muted hide-sm">${fmtSize(r.bytes)}</td>
         <td>${r.purged === 2 ? `<span class="muted">${t("définitif")}</span>` : r.undone ? `<span class="muted">${t("annulé")}</span>` : `<span class="conf-high">${t("appliqué")}</span>`}</td>
-        <td style="text-align:right"><button class="link detail">${t("Détails")}</button>
-          ${!r.undone ? `<button class="undo">${t("Annuler")}</button>` : ""}</td>
-      </tr><tr class="hidden"><td colspan="5" class="detail-box"></td></tr>`).join("")}
+        <td style="text-align:right;white-space:nowrap"><button class="link detail">${t("Détails")}</button>
+          ${!r.undone ? `<button class="undo">${t("Annuler")}</button>` : ""}
+          <button class="link h-del" title="${t("Supprimer de l'historique")}">✕</button></td>
+      </tr><tr class="hidden"><td colspan="7" class="detail-box"></td></tr>`).join("")}
     </tbody></table>` : `<div class="empty">${t("Aucune modification pour l'instant")}</div>`}`;
+
+  // Deleting a batch whose folders are still in the trash loses the way back.
+  const inTrash = (batches) => rows.some((r) => batches.includes(r.batch) && r.n_trash && !r.undone);
+  const forget = (batches, all = false) => {
+    const n = all ? stats.batches : batches.length;
+    let msg = t("confirm.history.delete", { n });
+    if (all ? stats.restorable : inTrash(batches)) msg += "\n\n⚠ " + t("confirm.history.trash");
+    if (!confirm(msg)) return;
+    run(async () => {
+      const r = await api("POST", "/api/history/delete", all ? { all: true } : { batches });
+      sel.clear();
+      toast(t("{n} opération(s) supprimée(s) de l'historique", { n: r.deleted }));
+      render();
+    });
+  };
+  if (!rows.length) return;
+  const syncSelection = () => {
+    $("#h-count").textContent = t("{n} sélectionné(s)", { n: sel.size });
+    $("#h-selnone").classList.toggle("hidden", !sel.size);
+    $("#h-delete").disabled = !sel.size;
+    for (const row of $$("tr[data-batch]", main)) $(".h-sel", row).checked = sel.has(row.dataset.batch);
+  };
+  $("#h-selall").onclick = () => { rows.forEach((r) => sel.add(r.batch)); syncSelection(); };
+  $("#h-selnone").onclick = () => { sel.clear(); syncSelection(); };
+  $("#h-delete").onclick = () => forget([...sel]);
+  $("#h-clear").onclick = () => forget([], true);
   for (const row of $$("tr[data-batch]", main)) {
     const batch = row.dataset.batch, next = row.nextElementSibling;
+    $(".h-sel", row).onchange = (e) => { e.target.checked ? sel.add(batch) : sel.delete(batch); syncSelection(); };
+    $(".h-del", row).onclick = () => forget([batch]);
     $(".detail", row).onclick = () => run(async () => {
       if (!next.classList.contains("hidden")) return next.classList.add("hidden");
       const items = await api("GET", `/api/history/${encodeURIComponent(batch)}`);
@@ -1375,6 +1523,7 @@ async function renderHistory(main) {
       refreshStatus(); render();
     });
   }
+  syncSelection();
 }
 
 // ------------------------------------------------------------ mobile menu

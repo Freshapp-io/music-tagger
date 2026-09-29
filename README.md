@@ -19,7 +19,7 @@ Application web (Docker) pour nettoyer les tags d'une grosse bibliothèque MP3,
 typiquement servie par [Navidrome](https://www.navidrome.org/).
 
 - **Nom technique** : `freshapp-music-tagger`
-- **Version** : 1.7.0
+- **Version** : 1.8.0
 - **Auteur** : FreshApp.io
 
 ### Fonctionnement
@@ -34,6 +34,8 @@ des MP3 comme un album**. Elle détecte :
 | **Tags incohérents** | dans un même dossier : album artist, nom d'album, année ou ID MusicBrainz différents — ce qui fait éclater l'album en plusieurs dans Navidrome |
 | **Doublons** | même album présent dans plusieurs dossiers |
 | **Genres** | genres écrits de mille façons (`Hip-Hop/Rap`, `Rap & Hip-Hop`, `hiphop`…), génériques (`Other`, `Unknown`) ou farfelus |
+| **Mauvais dossier** | album rangé dans le dossier d'un artiste de la bibliothèque (dossier parent ou nom « Artiste - Album ») alors que ses tags indiquent un autre artiste, avec la place attendue quand le dossier de cet artiste existe |
+| **Fichiers en erreur** | dossiers contenant des mp3 illisibles (erreur d'accès, fichier corrompu), avec le message d'erreur de chaque fichier et un bouton *Réessayer* |
 
 Pour chaque dossier, une **suggestion** est calculée avec un niveau de confiance :
 artiste majoritaire (hors « feat. »), album et année majoritaires ou déduits du
@@ -73,6 +75,11 @@ nom du dossier, titres et numéros de piste déduits des noms de fichiers.
 - **Thème** : clair, sombre, ou automatique (suit le système), au choix en bas du menu.
 - **Langue** : interface en français ou en anglais (sélecteur FR / EN ; par défaut, la langue du navigateur).
 - **Emplacement** : en éditant un album, le chemin du dossier (cliquable) et les autres albums du même dossier.
+- **Supprimer un album** : depuis la fiche de l'album (ou la page *Fichiers en erreur*), après confirmation.
+  Les fichiers du dossier quittent la bibliothèque et la base et vont dans la corbeille : annulable
+  depuis l'historique tant que la corbeille n'est pas vidée.
+- **Historique** : place occupée dans la base, suppression de lots (un par un ou par sélection) ou
+  vidage complet. Les fichiers ne sont pas touchés, mais ces modifications ne sont plus annulables.
 
 ### Captures d'écran
 
@@ -95,7 +102,7 @@ thème de GitHub.
 
 - Chaque écriture est journalisée avec l'ancienne valeur de chaque champ :
   **Historique → Annuler** restaure les tags.
-- Rien n'est supprimé : les doublons sont **déplacés** dans
+- Rien n'est supprimé : les doublons et les albums supprimés sont **déplacés** dans
   `.music-tagger-trash/` à la racine de la bibliothèque, avec un fichier
   `.ndignore` pour que Navidrome l'ignore. Annulable tant que la corbeille
   n'est pas vidée.
@@ -210,7 +217,7 @@ Dockerised web app to clean up the tags of a large MP3 library, typically
 served by [Navidrome](https://www.navidrome.org/).
 
 - **Technical name**: `freshapp-music-tagger`
-- **Version**: 1.7.0
+- **Version**: 1.8.0
 - **Author**: FreshApp.io
 
 ### How it works
@@ -225,6 +232,8 @@ an album**. It detects:
 | **Inconsistent tags** | within one folder: different album artist, album name, year or MusicBrainz ID — which makes Navidrome split the album |
 | **Duplicates** | the same album stored in several folders |
 | **Genres** | genres spelled in countless ways (`Hip-Hop/Rap`, `Rap & Hip-Hop`, `hiphop`…), generic (`Other`, `Unknown`) or odd ones |
+| **Wrong folder** | an album stored in the folder of an artist of the library (parent folder or an "Artist - Album" name) while its tags name another artist, with the expected location when that artist's folder exists |
+| **Unreadable files** | folders holding unreadable mp3 files (access error, corrupt file), with each file's error message and a *Retry* button |
 
 For each folder a **suggestion** is computed with a confidence level: main
 artist (ignoring "feat."), most common album and year or values derived from
@@ -261,6 +270,11 @@ the folder name, titles and track numbers derived from file names.
 - **Theme**: light, dark, or automatic (follows the system), chosen at the bottom of the menu.
 - **Language**: French or English interface (FR / EN switch; defaults to the browser language).
 - **Location**: when editing an album, the folder path (clickable) and the other albums of the same folder.
+- **Deleting an album**: from the album panel (or the *Unreadable files* page), after confirmation.
+  The folder's files leave the library and the database and go to the trash: can be undone from
+  the history until the trash is emptied.
+- **History**: space used in the database, removal of batches (one by one or a selection) or
+  clearing it all. Files are not touched, but those changes can no longer be undone.
 
 ### Screenshots
 
@@ -282,7 +296,7 @@ they follow GitHub's light or dark theme.
 
 - Every write is logged with the previous value of each field:
   **History → Undo** restores the tags.
-- Nothing is deleted: duplicates are **moved** to `.music-tagger-trash/` at the
+- Nothing is deleted: duplicates and deleted albums are **moved** to `.music-tagger-trash/` at the
   library root, with an `.ndignore` file so that Navidrome skips it. Undoable
   until the trash is emptied.
 - Only modified fields are rewritten; the existing ID3 version (2.3 / 2.4) is

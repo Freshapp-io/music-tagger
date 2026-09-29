@@ -191,6 +191,8 @@ def trash_dir(c, rel_dir, batch, label):
     _log(c, batch, label, "trash", rel_dir, {"src": rel_dir}, after)
     c.execute("DELETE FROM tracks WHERE dir=?", (rel_dir,))
     c.execute("DELETE FROM albums WHERE dir=?", (rel_dir,))
+    c.execute("DELETE FROM autotag WHERE dir=?", (rel_dir,))
+    c.execute("DELETE FROM scan_errors WHERE dir=?", (rel_dir,))
 
 
 def resolve_duplicates(job, groups):
@@ -210,9 +212,28 @@ def resolve_duplicates(job, groups):
                 except Exception as e:
                     job.error(d, e)
             c.commit()
-    analysis.compute_duplicates()
+    analysis.post_process()
     job.message = f"{n} dossiers déplacés dans la corbeille"
     return {"batch": batch, "moved": n}
+
+
+def delete_albums(dirs):
+    """Remove albums from the library: their files go to the trash (undoable
+    from the history until the trash is emptied) and they leave the index."""
+    batch = new_batch()
+    label = f"Album supprimé : {dirs[0]}" if len(dirs) == 1 else f"Albums supprimés ({len(dirs)})"
+    done, errors = [], []
+    with db.session() as c:
+        for d in dirs:
+            try:
+                trash_dir(c, d, batch, label)
+                c.commit()
+                done.append(d)
+            except Exception as e:
+                errors.append(f"{d}: {e}")
+    if done:
+        analysis.post_process()
+    return {"batch": batch, "deleted": len(done), "errors": errors}
 
 
 def undo(batch):
@@ -273,3 +294,29 @@ def empty_trash():
                 os.remove(e.path)
     with db.session() as c:
         c.execute("UPDATE history SET undone=2 WHERE action='trash' AND undone=0")  # 2 = purged
+
+
+# ------------------------------------------------------------------ history
+
+def history_stats():
+    with db.session() as c:
+        r = c.execute("""SELECT COUNT(DISTINCT batch) batches, COUNT(*) entries,
+                                COALESCE(SUM(LENGTH(before) + LENGTH(after) + LENGTH(path) + LENGTH(label) + 40), 0) bytes,
+                                MIN(ts) oldest,
+                                COUNT(DISTINCT CASE WHEN action='trash' AND undone=0 THEN batch END) restorable
+                         FROM history""").fetchone()
+    return {**dict(r), "db_size": db.size_on_disk()}
+
+
+def delete_history(batches=None):
+    """Forget some batches (None = all of them). Files are not touched, but
+    those changes can no longer be undone."""
+    with db.session() as c:
+        if batches is None:
+            n = c.execute("DELETE FROM history").rowcount
+        else:
+            n = 0
+            for b in batches:
+                n += c.execute("DELETE FROM history WHERE batch=?", (b,)).rowcount
+    db.vacuum()
+    return {"deleted": n, **history_stats()}

@@ -117,6 +117,11 @@ button.chip { cursor: pointer; }
 .b-various { background: var(--warn-soft); color: var(--warn); }
 .b-inconsistent { background: var(--accent-soft); color: var(--accent); }
 .b-duplicate { background: var(--dup-bg); color: var(--dup-fg); }
+.b-misplaced { background: var(--warn-soft); color: var(--warn); border: 1px dashed var(--warn); }
+.notice { border-left: 3px solid var(--warn); background: var(--warn-soft); padding: 8px 12px; border-radius: 4px; margin: 8px 0; }
+.err-files { margin: 6px 0 0; padding-left: 18px; }
+.err-files li { margin: 2px 0; }
+.err-msg { color: var(--bad); }
 .conf-high { color: var(--ok); } .conf-medium { color: var(--warn); } .conf-low { color: var(--bad); }
 .sug { font-size: 13px; }
 .sug b { font-weight: 600; }
@@ -283,6 +288,7 @@ td, .mono { overflow-wrap: anywhere; }
 
   /* tables scroll inside their own box instead of widening the page */
   table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .hide-sm { display: none; }
   .toolbar input[type=search], .toolbar input { max-width: 100%; }
   .toolbar > input[type=search] { width: 100% !important; }
 
