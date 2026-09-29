@@ -19,7 +19,7 @@ Application web (Docker) pour nettoyer les tags d'une grosse bibliothèque MP3,
 typiquement servie par [Navidrome](https://www.navidrome.org/).
 
 - **Nom technique** : `freshapp-music-tagger`
-- **Version** : 1.8.0
+- **Version** : 1.9.0
 - **Auteur** : FreshApp.io
 
 ### Fonctionnement
@@ -34,7 +34,7 @@ des MP3 comme un album**. Elle détecte :
 | **Tags incohérents** | dans un même dossier : album artist, nom d'album, année ou ID MusicBrainz différents — ce qui fait éclater l'album en plusieurs dans Navidrome |
 | **Doublons** | même album présent dans plusieurs dossiers |
 | **Genres** | genres écrits de mille façons (`Hip-Hop/Rap`, `Rap & Hip-Hop`, `hiphop`…), génériques (`Other`, `Unknown`) ou farfelus |
-| **Mauvais dossier** | album rangé dans le dossier d'un artiste de la bibliothèque (dossier parent ou nom « Artiste - Album ») alors que ses tags indiquent un autre artiste, avec la place attendue quand le dossier de cet artiste existe |
+| **Mauvais dossier** | album dont l'emplacement ne correspond pas à l'artiste : dossier artiste et nom du dossier album (`Nas/Jay-Z - Reasonable Doubt`) qui désignent deux artistes différents, même sans tags, ou dossier au nom d'un artiste de la bibliothèque alors que les tags en indiquent un autre ; avec la place attendue quand le dossier du bon artiste existe |
 | **Fichiers en erreur** | dossiers contenant des mp3 illisibles (erreur d'accès, fichier corrompu), avec le message d'erreur de chaque fichier et un bouton *Réessayer* |
 
 Pour chaque dossier, une **suggestion** est calculée avec un niveau de confiance :
@@ -56,6 +56,11 @@ nom du dossier, titres et numéros de piste déduits des noms de fichiers.
   MusicBrainz, du dossier ou imposé, genre vide complété, pochette, ne remplir que
   les champs vides, **respecter le nombre de pistes** (rejette toute proposition
   dont le disque n'a pas exactement le nombre de pistes du dossier).
+- **Discogs** (optionnel, `DISCOGS_TOKEN`) : deuxième source de tags, très complète pour le
+  hip-hop, l'électro et les vinyles. Ses résultats s'ajoutent à ceux de MusicBrainz dans la
+  recherche d'album (pastille *Discogs*) et dans le Tag auto, notés de la même façon ; ses genres
+  et styles peuvent compléter les genres vides, et servent quand MusicBrainz ne connaît pas
+  l'artiste. L'identifiant Discogs est écrit dans `DISCOGS_RELEASE_ID`.
 - **Piste par piste** : pour les compilations, chaque morceau se tague et
   s'enregistre séparément, avec suggestion depuis le nom de fichier ou recherche
   du morceau sur MusicBrainz.
@@ -182,6 +187,7 @@ l'historique, les choix et les dossiers ignorés.
 | `PORT` | 8085 | port web |
 | `SCAN_THREADS` | 8 | lectures parallèles pendant le scan |
 | `MB_USER_AGENT` | — | contact transmis à MusicBrainz |
+| `DISCOGS_TOKEN` | — | optionnel : active Discogs (jeton personnel, discogs.com › Settings › Developers) |
 | `NAVIDROME_URL`, `NAVIDROME_USER`, `NAVIDROME_PASSWORD` | — | optionnel : bouton « Lancer un scan Navidrome » (compte administrateur) |
 
 La base SQLite (index des tags, historique, choix de genres) est dans `./data`.
@@ -217,7 +223,7 @@ Dockerised web app to clean up the tags of a large MP3 library, typically
 served by [Navidrome](https://www.navidrome.org/).
 
 - **Technical name**: `freshapp-music-tagger`
-- **Version**: 1.8.0
+- **Version**: 1.9.0
 - **Author**: FreshApp.io
 
 ### How it works
@@ -232,7 +238,7 @@ an album**. It detects:
 | **Inconsistent tags** | within one folder: different album artist, album name, year or MusicBrainz ID — which makes Navidrome split the album |
 | **Duplicates** | the same album stored in several folders |
 | **Genres** | genres spelled in countless ways (`Hip-Hop/Rap`, `Rap & Hip-Hop`, `hiphop`…), generic (`Other`, `Unknown`) or odd ones |
-| **Wrong folder** | an album stored in the folder of an artist of the library (parent folder or an "Artist - Album" name) while its tags name another artist, with the expected location when that artist's folder exists |
+| **Wrong folder** | an album whose location does not match its artist: artist folder and album folder name (`Nas/Jay-Z - Reasonable Doubt`) naming two different artists, even without tags, or a folder named after an artist of the library while the tags name another; with the expected location when the right artist's folder exists |
 | **Unreadable files** | folders holding unreadable mp3 files (access error, corrupt file), with each file's error message and a *Retry* button |
 
 For each folder a **suggestion** is computed with a confidence level: main
@@ -254,6 +260,11 @@ the folder name, titles and track numbers derived from file names.
   forced, empty genre filled in, cover art, fill empty fields only, **respect
   the track count** (rejects any proposal whose disc does not have exactly the
   folder's number of tracks).
+- **Discogs** (optional, `DISCOGS_TOKEN`): a second tag source, very complete for hip-hop,
+  electronic music and vinyl. Its results join MusicBrainz's in the album search (*Discogs*
+  badge) and in auto-tagging, scored the same way; its genres and styles can fill in empty genres,
+  and are used when MusicBrainz does not know the artist. The Discogs id is written to
+  `DISCOGS_RELEASE_ID`.
 - **Track by track**: for compilations, each track is tagged and saved on its
   own, with a suggestion from the file name or a MusicBrainz track search.
 - **MusicBrainz**: album search by name **and by track lengths** (like
@@ -374,6 +385,7 @@ ignored folders.
 | `PORT` | 8085 | web port |
 | `SCAN_THREADS` | 8 | parallel reads during a scan |
 | `MB_USER_AGENT` | — | contact sent to MusicBrainz |
+| `DISCOGS_TOKEN` | — | optional: enables Discogs (personal access token, discogs.com › Settings › Developers) |
 | `NAVIDROME_URL`, `NAVIDROME_USER`, `NAVIDROME_PASSWORD` | — | optional: "Start a Navidrome scan" button (admin account) |
 
 The SQLite database (tag index, history, genre choices) lives in `./data`.

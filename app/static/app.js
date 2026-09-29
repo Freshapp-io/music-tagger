@@ -111,12 +111,16 @@ async function render() {
   main.innerHTML = `<div class="empty">${t("Page inconnue")}</div>`;
 }
 window.addEventListener("hashchange", render);
+// A page loads its data asynchronously: when the user has moved on meanwhile,
+// its answer must not overwrite the new page.
+const stillOn = (view) => currentView() === view;
 
 // --------------------------------------------------------------- dashboard
 async function renderDashboard(main) {
   if (!status) await refreshStatus();
   const s = status, c = s.counts;
   const trash = await api("GET", "/api/trash").catch(() => null);
+  if (!stillOn("dashboard")) return;
   const card = (href, n, label) => `<a class="card" href="${href}"><div class="num">${fmtNum(n)}</div><div class="lbl">${label}</div></a>`;
   main.innerHTML = `
     <h1>${t("Tableau de bord")}</h1>
@@ -223,13 +227,21 @@ function listParams(view, st, extra = {}) {
   return qs({ issue: view, q: st.q, sub: st.sub, confidence: st.confidence, show_ignored: st.showIgnored, sort: st.sort, ...extra });
 }
 
+/** The three places that name the artist: artist folder, album folder name, tags. */
+function misplacedLines(m) {
+  const line = (label, v) => `<div>${label}${COLON}${v ? `<b>${esc(v)}</b>` : `<span class="muted">—</span>`}</div>`;
+  return line(t("Dossier artiste"), m.folder_artist) + line(t("Nom du dossier album"), m.name_artist) + line(t("Tags"), m.tag_artist);
+}
+
 function misplacedHtml(m) {
   if (!m) return "";
+  const right = m.tag_artist || m.name_artist;
   return `<div class="sug">
-    <div>${t("Dossier de")}${COLON}<b>${esc(m.folder_artist)}</b></div>
-    <div>${t("Tags")}${COLON}<b>${esc(m.tag_artist)}</b></div>
+    ${misplacedLines(m)}
     <div class="small">${m.target ? `${t("Place attendue")}${COLON}<span class="mono">${esc(m.target)}</span>`
-      : `<span class="muted">${t("Aucun dossier « {name} » dans la bibliothèque", { name: esc(m.tag_artist) })}</span>`}</div>
+      : right && !(m.folder_artist && m.tag_artist && fold(m.folder_artist) === fold(m.tag_artist))
+        ? `<span class="muted">${t("Aucun dossier « {name} » dans la bibliothèque", { name: esc(right) })}</span>`
+        : `<span class="muted">${t("Les tags donnent raison au dossier artiste : renommer le dossier album ?")}</span>`}</div>
   </div>`;
 }
 
@@ -254,6 +266,7 @@ function suggestionHtml(a) {
 async function loadList(view) {
   const st = stateFor(view);
   const data = await run(() => api("GET", "/api/albums?" + listParams(view, st, { offset: st.offset, limit: 100 })));
+  if (!stillOn(view)) return;
   const box = $("#list");
   if (!box) return;
   if (!data.items.length) {
@@ -428,8 +441,9 @@ function folderContext(d) {
   }
   const icon = `<svg class="folder-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.3l2 2h8.7A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>`;
   const m = d.album.misplaced;
-  const wrong = m ? `<div class="notice small">⚠ ${t("Rangé dans le dossier de {folder}, mais les tags indiquent {tags}.", { folder: `<b>${esc(m.folder_artist)}</b>`, tags: `<b>${esc(m.tag_artist)}</b>` })}
-    ${m.target ? `${t("Place attendue")}${COLON}<span class="mono">${esc(m.target)}</span>` : ""}
+  const wrong = m ? `<div class="notice small">⚠ <b>${t("L'emplacement ne correspond pas à l'artiste")}</b>
+    ${misplacedLines(m)}
+    ${m.target ? `<div>${t("Place attendue")}${COLON}<span class="mono">${esc(m.target)}</span></div>` : ""}
     <div class="muted">${t("hint.misplaced")}</div></div>` : "";
   return `<nav class="crumbs" aria-label="${t("Emplacement")}">${icon} ${crumbs.join(' <span class="muted">›</span> ')}</nav>${others}${wrong}`;
 }
@@ -509,7 +523,7 @@ async function albumEditor(root, dir, opts = {}) {
 
     <div class="actions">
       ${opts.review ? "" : `<button class="primary ed-save">${t("Enregistrer les tags")}</button>`}
-      <button class="ed-mb-open">${t("Chercher l'album sur MusicBrainz")}</button>
+      <button class="ed-mb-open">${status && status.discogs ? t("Chercher l'album (MusicBrainz, Discogs)") : t("Chercher l'album sur MusicBrainz")}</button>
       ${opts.review ? "" : a.issues.filter((i) => ISSUE[i]).map((i) => a.ignored.includes(i)
         ? `<button data-unignore="${i}">${t("Ne plus ignorer ({issue})", { issue: ISSUE[i] })}</button>`
         : `<button data-ignore="${i}">${t("Ignorer ({issue})", { issue: ISSUE[i] })}</button>`).join("")}
@@ -733,7 +747,7 @@ function mbPanel(root, dir, tracks, q, onApplied, editor) {
   box.classList.remove("hidden");
   box.innerHTML = `
     <div class="toolbar">
-      <b>MusicBrainz</b>
+      <b>MusicBrainz${status && status.discogs ? " · Discogs" : ""}</b>
       <input class="mb-artist" placeholder="${t("Artiste")}" value="${esc(q.artist)}" style="width:220px">
       <input class="mb-album" placeholder="${t("Album")}" value="${esc(q.album)}" style="width:260px">
       <button class="primary mb-search">${t("Rechercher")}</button>
@@ -745,12 +759,17 @@ function mbPanel(root, dir, tracks, q, onApplied, editor) {
     out.innerHTML = `<div class="muted">${t("Recherche par nom et par durées des pistes…")}</div>`;
     const artist = $(".mb-artist", box).value.trim(), album = $(".mb-album", box).value.trim();
     // Both lookups at once: by name, and by track lengths + order (CD table of contents).
-    const [byName, byDur] = await Promise.all([
+    // Discogs (name only) when a token is set; a Discogs failure never hides MusicBrainz.
+    const [byName, byDur, byDiscogs] = await Promise.all([
       artist || album ? api("GET", "/api/mb/search?" + qs({ artist, album, n: tracks.length })) : Promise.resolve([]),
       api("GET", "/api/mb/by-durations?" + qs({ dir })).catch(() => ({ releases: [], failed: true })),
+      status && status.discogs && (artist || album)
+        ? api("GET", "/api/discogs/search?" + qs({ artist, album, n: tracks.length })).catch((e) => { toast(e.message, true); return []; })
+        : Promise.resolve([]),
     ]);
     const merged = new Map(byDur.releases.map((r) => [r.id, r]));
     for (const r of byName) merged.set(r.id, merged.has(r.id) ? { ...r, by_durations: true } : r);
+    for (const r of byDiscogs) merged.set(r.id, r);
     const res = [...merged.values()].sort((a, b) => (!!b.by_durations - !!a.by_durations) || (b.score - a.score));
     const nDur = byDur.releases.length;
     const durLine = byDur.failed ? `<span class="conf-low">${t("Recherche par durées indisponible (MusicBrainz ne répond pas)")}</span>`
@@ -759,9 +778,9 @@ function mbPanel(root, dir, tracks, q, onApplied, editor) {
     if (!res.length) { out.innerHTML = `<div class="small">${durLine}</div><div class="muted">${t("Aucun résultat")}</div>`; return; }
     out.innerHTML = `<div class="small" style="margin-bottom:6px">${durLine}</div>` + res.slice(0, 20).map((r) => `
       <div class="mb-result" data-id="${r.id}">
-        <div>${r.by_durations ? `<span class="chip g-clean" title="${t("Nombre de pistes et durées identiques à ce dossier")}">${t("durées ✓")}</span> ` : ""}<b>${esc(r.title)}</b> — ${esc(r.artist)} ${r.disambiguation ? `<span class="muted">(${esc(r.disambiguation)})</span>` : ""}
+        <div>${r.by_durations ? `<span class="chip g-clean" title="${t("Nombre de pistes et durées identiques à ce dossier")}">${t("durées ✓")}</span> ` : ""}${r.source === "discogs" ? `<span class="chip src-discogs">Discogs</span> ` : ""}<b>${esc(r.title)}</b> — ${esc(r.artist)} ${r.disambiguation ? `<span class="muted">(${esc(r.disambiguation)})</span>` : ""}
           <div class="small muted">${esc(r.date)} ${esc(r.country)} · ${esc(r.format)} · ${esc(r.label)} · ${esc(r.status)}</div></div>
-        <div class="small" style="text-align:right"><b class="${r.tracks === tracks.length ? "conf-high" : "conf-medium"}">${t("{n} pistes", { n: r.tracks })}</b><div class="muted">score ${r.score}</div></div>
+        <div class="small" style="text-align:right">${r.tracks === null ? `<span class="muted">${t("pistes : à l'ouverture")}</span>` : `<b class="${r.tracks === tracks.length ? "conf-high" : "conf-medium"}">${t("{n} pistes", { n: r.tracks })}</b>`}<div class="muted">score ${r.score}</div></div>
       </div>`).join("");
     for (const el of $$(".mb-result", out)) el.onclick = () => {
       $$(".mb-result", out).forEach((x) => x.classList.remove("sel"));
@@ -774,14 +793,20 @@ function mbPanel(root, dir, tracks, q, onApplied, editor) {
   search();          // durations work even when nothing is typed
 }
 
+const releaseUrl = (id) => String(id).startsWith("discogs:")
+  ? `https://www.discogs.com/release/${encodeURIComponent(id.slice(8))}` : `https://musicbrainz.org/release/${encodeURIComponent(id)}`;
+
 async function mbMatch(panel, dir, tracks, releaseId, onApplied, editor) {
   const box = $(".mb-match", panel);
   box.innerHTML = `<div class="muted">${t("Chargement de la tracklist…")}</div>`;
-  const { release: rel, mapping } = await run(() => api("GET", "/api/mb/match?" + qs({ dir, release: releaseId })));
+  const { release: rel, mapping, genre } = await run(() => api("GET", "/api/mb/match?" + qs({ dir, release: releaseId })));
+  const isDiscogs = rel.source === "discogs";
   const byPath = Object.fromEntries(tracks.map((tk) => [tk.path, tk]));
   const opt = (i, sel) => `<option value="${i}" ${i === sel ? "selected" : ""}>${rel.tracks[i].discs > 1 ? rel.tracks[i].disc + "-" : ""}${rel.tracks[i].position}. ${esc(rel.tracks[i].title)} (${fmtDur(rel.tracks[i].length)})</option>`;
   box.innerHTML = `
-    <h2>${esc(rel.albumartist)} — ${esc(rel.title)} <span class="muted small">${esc(rel.date)} · ${t("{n} pistes", { n: rel.tracks.length })}</span></h2>
+    <h2>${esc(rel.albumartist)} — ${esc(rel.title)} <span class="muted small">${esc(rel.date)} · ${t("{n} pistes", { n: rel.tracks.length })}</span>
+      <a class="small" href="${releaseUrl(rel.id)}" target="_blank" rel="noopener">${isDiscogs ? "Discogs" : "MusicBrainz"} ↗${newWindow()}</a></h2>
+    ${isDiscogs && rel.genres.length ? `<p class="small muted">${t("Genres Discogs :")} ${esc(rel.genres.join(", "))}</p>` : ""}
     ${(() => {
       const diffs = mapping.filter((m) => m.index !== null && byPath[m.path].duration && rel.tracks[m.index].length)
         .map((m) => Math.abs(byPath[m.path].duration - rel.tracks[m.index].length));
@@ -791,7 +816,7 @@ async function mbMatch(panel, dir, tracks, releaseId, onApplied, editor) {
       const hint = max <= 3 ? t("même édition très probablement") : avg <= 8 ? t("même album, autre mastering ou édition possible") : t("durées éloignées : vérifiez l'édition");
       return `<p class="small ${cls}">${t("Durées : écart moyen {avg} s, maximum {max} s sur {n} piste(s) associée(s)", { avg: avg.toFixed(1), max: Math.round(max), n: diffs.length })} — ${hint}</p>`;
     })()}
-    <table class="tracks"><thead><tr><th></th><th>${t("Fichier")}</th><th>${t("Durée")}</th><th>${t("Piste MusicBrainz")}</th><th>${t("Score")}</th></tr></thead>
+    <table class="tracks"><thead><tr><th></th><th>${t("Fichier")}</th><th>${t("Durée")}</th><th>${isDiscogs ? t("Piste Discogs") : t("Piste MusicBrainz")}</th><th>${t("Score")}</th></tr></thead>
     <tbody>${mapping.map((m) => `
       <tr data-path="${esc(m.path)}">
         <td>${playBtn(byPath[m.path])}</td>
@@ -802,8 +827,9 @@ async function mbMatch(panel, dir, tracks, releaseId, onApplied, editor) {
       </tr>`).join("")}</tbody></table>
     <div class="actions">
       <label><input type="checkbox" class="mb-cover" ${rel.cover ? "checked" : "disabled"}> ${t("Intégrer la pochette dans les fichiers qui n'en ont pas")} ${rel.cover ? "" : t("(indisponible)")}</label>
+      ${genre ? `<label><input type="checkbox" class="mb-genre" checked> ${t("Compléter le genre vide : {g}", { g: esc(genre) })}</label>` : ""}
       <span style="flex:1"></span>
-      <button class="primary mb-apply">${t("Appliquer les tags MusicBrainz")}</button>
+      <button class="primary mb-apply">${isDiscogs ? t("Appliquer les tags Discogs") : t("Appliquer les tags MusicBrainz")}</button>
     </div>`;
   bindPlay(box);
   $(".mb-apply", box).onclick = () => run(async () => {
@@ -814,10 +840,12 @@ async function mbMatch(panel, dir, tracks, releaseId, onApplied, editor) {
     const n = map.filter((m) => m.index !== null).length;
     if (!n) return toast(t("Aucun fichier associé à une piste MusicBrainz : choisissez les correspondances dans le tableau"), true);
     const todo = editor ? editor.pending() : [];
-    const msg = todo.length ? t("confirm.mb.pending", { list: todo.join(", "), n }) : t("confirm.mb", { n });
+    const key = isDiscogs ? "confirm.discogs" : "confirm.mb";
+    const msg = todo.length ? t(key + ".pending", { list: todo.join(", "), n }) : t(key, { n });
     if (!confirm(msg)) return;
     if (todo.length) await editor.save();
-    const r = await api("POST", "/api/mb/apply", { dir, release: releaseId, mapping: map, cover: $(".mb-cover", box).checked });
+    const r = await api("POST", "/api/mb/apply", { dir, release: releaseId, mapping: map, cover: $(".mb-cover", box).checked,
+      genre: !!($(".mb-genre", box) && $(".mb-genre", box).checked) });
     toast(t("{n} fichier(s) taggué(s)", { n: r.files }) + (r.cover ? " " + t("avec pochette") : ""));
     onApplied();
   });
@@ -992,6 +1020,7 @@ async function renderDuplicates(main) {
 
 async function loadDuplicates() {
   const data = await run(() => api("GET", "/api/duplicates?" + qs({ q: dupState.q, show_ignored: dupState.showIgnored, offset: dupState.offset, limit: 50 })));
+  if (!stillOn("duplicates")) return;
   const box = $("#dlist");
   if (!box) return;
   const groups = data.items;
@@ -1099,7 +1128,7 @@ async function renderGenres(main) {
       <div class="seg" id="g-filter">${Object.entries(G_FILTERS).map(([k, v]) => `<button data-f="${k}">${v}</button>`).join("")}</div>
       <input type="search" id="g-q" placeholder="${t("Filtrer…")}" value="${esc(genreState.q)}" style="width:240px">
       <span class="grow"></span>
-      <button id="g-mb" title="${t("Pour les artistes dont aucun morceau n'a de genre exploitable")}">${t("Chercher les genres inconnus sur MusicBrainz")}</button>
+      <button id="g-mb" title="${t("Pour les artistes dont aucun morceau n'a de genre exploitable")}">${status && status.discogs ? t("Chercher les genres inconnus (MusicBrainz, Discogs)") : t("Chercher les genres inconnus sur MusicBrainz")}</button>
     </div>
     <div id="g-batch"></div>
     <div id="g-list"><div class="empty">${t("Chargement…")}</div></div>`;
@@ -1113,7 +1142,7 @@ async function renderGenres(main) {
     $("#g-add").value = ""; loadGenres();
   });
   $("#g-add-btn").onclick = addCanon;
-  $("#g-mb").onclick = () => confirm(t("confirm.genres.mb")) &&
+  $("#g-mb").onclick = () => confirm(t(status && status.discogs ? "confirm.genres.discogs" : "confirm.genres.mb")) &&
     run(async () => { await api("POST", "/api/genres/musicbrainz"); lastJobStatus = "running"; refreshStatus(); });
   $("#g-add").onkeydown = (e) => e.key === "Enter" && addCanon();
   loadGenres();
@@ -1121,6 +1150,7 @@ async function renderGenres(main) {
 
 async function loadGenres() {
   const data = await run(() => api("GET", "/api/genres"));
+  if (!stillOn("genres")) return;
   genreState.data = data;
   genreCanon = data.canon;
   $("#g-canon").innerHTML = genreCanon.map((g) => `<span class="chip canon">${esc(g)} <button class="link g-rm" data-g="${esc(g)}" title="${t("Retirer")}">✕</button></span>`).join("");
@@ -1258,6 +1288,7 @@ function atDefaultSelection(items, o) {
 
 async function renderAutotag(main) {
   const data = await run(() => api("GET", "/api/autotag"));
+  if (!stillOn("autotag")) return;
   atState.data = data;
   atState.options = atState.options || { ...data.options };
   const o = atState.options;
@@ -1333,7 +1364,7 @@ function drawAutotag() {
       return `<tr data-dir="${esc(r.dir)}">
         <td class="check"><input type="checkbox" class="at-sel" ${atState.selected.has(r.dir) ? "checked" : ""} ${AT_INACTIVE.includes(v.status) ? "disabled" : ""}></td>
         <td><a href="#" class="open dir">${esc(r.dir)}</a><div class="small muted">${t("{n} pistes", { n: r.n_tracks || "?" })}</div></td>
-        <td>${rel ? `<a href="https://musicbrainz.org/release/${esc(rel.id)}" target="_blank" rel="noopener">${esc(rel.artist)} — ${esc(rel.title)}${newWindow()}</a>
+        <td>${rel ? `${String(rel.id).startsWith("discogs:") ? `<span class="chip src-discogs">Discogs</span> ` : ""}<a href="${releaseUrl(rel.id)}" target="_blank" rel="noopener">${esc(rel.artist)} — ${esc(rel.title)}${newWindow()}</a>
           <div class="small muted">${esc(rel.date || "")} · <span class="${countCls}">${t("{n} pistes (dossier : {k})", { n: discTracks, k: r.n_tracks })}</span> ${d.via_durations ? `<span class="chip g-clean">${t("durées ✓")}</span>` : ""}</div>` : `<span class="muted small">${esc(tr(d.reason || ""))}</span>`}</td>
         <td><b class="${cls}">${v.score ? Math.round(v.score) : "—"}</b>
           ${v.score ? `<div class="at-bar"><div style="width:${Math.min(100, v.score)}%"></div></div>` : ""}</td>
@@ -1414,6 +1445,7 @@ async function retryErrors(dirs) {
 
 async function loadErrors() {
   const data = await run(() => api("GET", "/api/errors?" + qs({ q: errState.q })));
+  if (!stillOn("errors")) return;
   const box = $("#elist");
   if (!box) return;
   if (!data.items.length) { box.innerHTML = `<div class="empty">${t("Aucun fichier en erreur")}</div>`; return; }
@@ -1445,6 +1477,7 @@ const histState = { selected: new Set() };
 
 async function renderHistory(main) {
   const { items: rows, stats } = await run(() => api("GET", "/api/history?limit=200"));
+  if (!stillOn("history")) return;
   const sel = histState.selected;
   for (const b of [...sel]) if (!rows.some((r) => r.batch === b)) sel.delete(b);
   main.innerHTML = `

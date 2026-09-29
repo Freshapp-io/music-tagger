@@ -117,6 +117,7 @@ button.chip { cursor: pointer; }
 .b-various { background: var(--warn-soft); color: var(--warn); }
 .b-inconsistent { background: var(--accent-soft); color: var(--accent); }
 .b-duplicate { background: var(--dup-bg); color: var(--dup-fg); }
+.chip.src-discogs { background: var(--text); color: var(--panel); border-color: transparent; font-weight: 600; }
 .b-misplaced { background: var(--warn-soft); color: var(--warn); border: 1px dashed var(--warn); }
 .notice { border-left: 3px solid var(--warn); background: var(--warn-soft); padding: 8px 12px; border-radius: 4px; margin: 8px 0; }
 .err-files { margin: 6px 0 0; padding-left: 18px; }

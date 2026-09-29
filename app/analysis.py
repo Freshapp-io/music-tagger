@@ -362,11 +362,40 @@ def _album_folder(rel_dir):
     return parts
 
 
+# Left part of 'X - Album' folder names that is no artist: years, numbers, discs, editions.
+NOT_ARTIST = re.compile(
+    r"^(?:[\d ]+$|(?:cd|dis[ck]|disque|vol(?:ume)?|part|tome|chapitre) ?\d*\b|"
+    r"(?:live|best of|the best of|greatest hits|deluxe|remaster(?:ed)?|bonus|ep|lp|singles?|mixtape|ost|soundtrack)\b)")
+
+
+def _name_split(name):
+    """'Jay-Z - Reasonable Doubt' -> ('Jay-Z', 'Reasonable Doubt'), None when the
+    folder name has no 'Artist - Album' form."""
+    if " " not in name:
+        name = name.replace("_", " ")          # scene names: 'Jay-Z_-_Reasonable_Doubt'
+    if " - " not in name:
+        return None
+    left, right = (x.strip() for x in name.split(" - ", 1))
+    if not left or not right or NOT_ARTIST.match(fold(left)):
+        return None
+    return left, right
+
+
+def _same_album(a, b):
+    na, nb = norm_album(a), norm_album(b)
+    if not na or not nb:
+        return False
+    return na == nb or (min(len(na), len(nb)) >= 4 and (na in nb or nb in na))
+
+
 def find_misplaced(albums):
-    """albums: dicts with dir, tag_artist, artists (json). Returns {dir: info} for the albums
-    whose folder names an artist of the library while the tags name another.
-    The folder is taken from the 'Artist - Album' folder name, else from the
-    nearest parent folder named after a known artist."""
+    """albums: dicts with dir, tag_artist, artists and albums (json).
+    Returns {dir: info} for the albums whose location disagrees:
+    - folder vs folder: 'Nas/Jay-Z - Reasonable Doubt' (artist folder vs the
+      artist in the album folder name), tags or not;
+    - folder vs tags: the folder names an artist of the library (parent folder
+      or 'Artist - Album' name) while the tags agree on another artist.
+    info = {folder_artist, folder, name_artist, tag_artist, target}."""
     # Artists of the library: album artists, and track artists (a folder named
     # after an artist who only appears as a track artist is still theirs).
     known = {_artist_key(a["tag_artist"]) for a in albums if a["tag_artist"]}
@@ -375,42 +404,72 @@ def find_misplaced(albums):
     known.discard("")
     # Existing folders named after an artist: where a misplaced album should go.
     homes = defaultdict(Counter)
+    # Artist folders whose albums are named 'Artist - Album': there the left part is an artist.
+    convention = Counter()
     for a in albums:
         parts = _album_folder(a["dir"])
         for i in range(len(parts) - 1):
             k = _artist_key(parts[i])
             if k in known:
                 homes[k]["/".join(parts[:i + 1])] += 1
+        split = _name_split(parts[-1])
+        if len(parts) >= 2 and split and _artist_key(split[0]) and _same_artist(split[0], parts[-2]):
+            convention["/".join(parts[:-1])] += 1
+            homes[_artist_key(parts[-2])]["/".join(parts[:-1])] += 1
+
     out = {}
     for a in albums:
         artist = a["tag_artist"]
-        if not artist:
-            continue
         parts = _album_folder(a["dir"])
-        candidates = []
-        if " - " in parts[-1]:
-            left = parts[-1].split(" - ", 1)[0].strip()
-            if not re.fullmatch(r"[\d\s.()\[\]-]+", left):
-                candidates.append((left, None))
-        candidates += [(parts[i], "/".join(parts[:i + 1])) for i in range(len(parts) - 2, -1, -1)]
-        found = next(((name, folder) for name, folder in candidates if _artist_key(name) in known), None)
-        if not found or _same_artist(found[0], artist):
+        split = _name_split(parts[-1])
+        tag_albums = [x for x in json.loads(a.get("albums") or "[]") if x]
+        info = {"folder_artist": None, "folder": None, "name_artist": None, "tag_artist": artist, "target": None}
+        flagged = False
+
+        # 1. folder vs folder
+        if len(parts) >= 2 and split:
+            parent, parent_path = parts[-2], "/".join(parts[:-1])
+            left, right = split
+            if not any(_same_album(left, x) for x in tag_albums):      # 'Illmatic - Deluxe Edition'
+                left_is_artist = (_artist_key(left) in known or convention[parent_path] >= 2
+                                  or any(_same_album(right, x) for x in tag_albums))
+                parent_is_artist = _artist_key(parent) in known or convention[parent_path] >= 2
+                if left_is_artist and parent_is_artist and not _same_artist(left, parent):
+                    info.update(folder_artist=parent, folder=parent_path, name_artist=left)
+                    flagged = True
+
+        # 2. folder vs tags
+        if artist:
+            candidates = []
+            if split:
+                candidates.append((split[0], None))
+            candidates += [(parts[i], "/".join(parts[:i + 1])) for i in range(len(parts) - 2, -1, -1)]
+            found = next(((name, folder) for name, folder in candidates if _artist_key(name) in known), None)
+            # The right artist appearing somewhere in the path is enough ('Jay-Z/Jay-Z & Nas - …').
+            if found and not _same_artist(found[0], artist) and \
+                    not re.search(r"\b" + re.escape(_artist_key(artist)) + r"\b", fold(a["dir"])):
+                if found[1] is None:
+                    info["name_artist"] = found[0]
+                elif not info["folder_artist"]:
+                    info.update(folder_artist=found[0], folder=found[1])
+                flagged = True
+        if not flagged:
             continue
-        # The right artist appears somewhere in the path: not misplaced ('Jay-Z/Jay-Z & Nas - …').
-        if re.search(r"\b" + re.escape(_artist_key(artist)) + r"\b", fold(a["dir"])):
-            continue
-        home = homes.get(_artist_key(artist))
-        target = None
-        if home:
-            rest = a["dir"].split("/")[len(parts) - 1:]
-            target = home.most_common(1)[0][0] + "/" + "/".join(rest)
-        out[a["dir"]] = {"folder_artist": found[0], "folder": found[1], "tag_artist": artist, "target": target}
+
+        # Where it should go: the tags' artist, else (no tags) the one in the folder name.
+        right_artist = artist or info["name_artist"]
+        if right_artist and not (info["folder_artist"] and _same_artist(right_artist, info["folder_artist"])):
+            home = homes.get(_artist_key(right_artist))
+            if home:
+                rest = a["dir"].split("/")[len(parts) - 1:]
+                info["target"] = home.most_common(1)[0][0] + "/" + "/".join(rest)
+        out[a["dir"]] = info
     return out
 
 
 def compute_misplaced():
     with db.session() as c:
-        albums = [dict(r) for r in c.execute("SELECT dir, tag_artist, artists, issues, misplaced FROM albums")]
+        albums = [dict(r) for r in c.execute("SELECT dir, tag_artist, artists, albums, issues, misplaced FROM albums")]
         found = find_misplaced(albums)
         for a in albums:
             info = found.get(a["dir"])

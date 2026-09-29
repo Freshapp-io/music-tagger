@@ -17,6 +17,7 @@ TXXX_FIELDS = {
     "mb_albumartistid": "MusicBrainz Album Artist Id",
     "mb_releasegroupid": "MusicBrainz Release Group Id",
     "mb_releasetrackid": "MusicBrainz Release Track Id",
+    "discogs_releaseid": "DISCOGS_RELEASE_ID",
 }
 MB_UFID = "http://musicbrainz.org"
 EDITABLE = list(TEXT_FRAMES) + list(TXXX_FIELDS) + ["mb_trackid"]

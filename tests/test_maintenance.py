@@ -19,26 +19,48 @@ def album(library, folder, artist, album_name, n=3, **extra):
                  title=f"{album_name} {i}", track=str(i), **extra)
 
 
+def untagged(library, folder, n=3):
+    for i in range(1, n + 1):
+        make_mp3(library / folder / f"{i:02d} - Song {i}.mp3")
+
+
 def test_misplaced_album(library, job):
     album(library, "Nas/Illmatic", "Nas", "Illmatic")
     album(library, "Nas/Stillmatic", "Nas", "Stillmatic")
-    album(library, "Nas/Reasonable Doubt", "Jay-Z", "Reasonable Doubt")        # wrong artist folder
+    album(library, "Nas/Reasonable Doubt", "Jay-Z", "Reasonable Doubt")        # tags: another artist
     album(library, "Jay-Z/The Blueprint", "Jay-Z", "The Blueprint")
     album(library, "Mobb Deep - Illmatic Remix", "Nas", "Illmatic Remix")      # wrong 'Artist - Album' name
     album(library, "Mobb Deep/The Infamous/CD1", "Mobb Deep", "The Infamous")  # disc folder: fine
     album(library, "Nas/Nas & Damian Marley - Distant Relatives", "Nas & Damian Marley", "Distant Relatives")
     album(library, "Rap/Big L - Lifestylez", "Big L", "Lifestylez")            # genre folder: fine
+    album(library, "Nas/Illmatic - Deluxe Edition", "Nas", "Illmatic")        # left part is the album
     for i, a in enumerate(["Nas", "Jay-Z", "Big L"], 1):                        # compilation: never misplaced
         make_mp3(library / f"Nas/Best Of Rap/{i:02d}.mp3", artist=a, albumartist="Various Artists",
                  album="Best Of Rap", title=f"t{i}", compilation="1")
+    # folder vs folder, no tags at all
+    untagged(library, "Nas/Jay-Z - The Blueprint 2")         # Jay-Z is a known artist
+    untagged(library, "Nas/1999 - I Am")                     # a year, not an artist
+    untagged(library, "Nas/Live - Paris")
+    untagged(library, "50 Cent/50 Cent - Get Rich")
+    untagged(library, "Kery James/Kery James - A.C.E.")
+    untagged(library, "Kery James/Kery James - Reel")
+    untagged(library, "Kery James/Ideal J - O'riginal")      # unknown artist, but the folder's naming says so
     scanner.scan(job)
     a = albums()
     flagged = {d for d, x in a.items() if "misplaced" in x["issues"]}
-    assert flagged == {"Nas/Reasonable Doubt", "Mobb Deep - Illmatic Remix"}
-    m = a["Nas/Reasonable Doubt"]["misplaced"]
-    assert m == {"folder_artist": "Nas", "folder": "Nas", "tag_artist": "Jay-Z", "target": "Jay-Z/Reasonable Doubt"}
-    m = a["Mobb Deep - Illmatic Remix"]["misplaced"]
-    assert (m["folder_artist"], m["tag_artist"], m["target"]) == ("Mobb Deep", "Nas", "Nas/Mobb Deep - Illmatic Remix")
+    assert flagged == {"Nas/Reasonable Doubt", "Mobb Deep - Illmatic Remix", "Nas/Jay-Z - The Blueprint 2",
+                       "Kery James/Ideal J - O'riginal"}
+    assert a["Nas/Reasonable Doubt"]["misplaced"] == {
+        "folder_artist": "Nas", "folder": "Nas", "name_artist": None, "tag_artist": "Jay-Z",
+        "target": "Jay-Z/Reasonable Doubt"}
+    assert a["Mobb Deep - Illmatic Remix"]["misplaced"] == {
+        "folder_artist": None, "folder": None, "name_artist": "Mobb Deep", "tag_artist": "Nas",
+        "target": "Nas/Mobb Deep - Illmatic Remix"}
+    assert a["Nas/Jay-Z - The Blueprint 2"]["misplaced"] == {
+        "folder_artist": "Nas", "folder": "Nas", "name_artist": "Jay-Z", "tag_artist": None,
+        "target": "Jay-Z/Jay-Z - The Blueprint 2"}
+    m = a["Kery James/Ideal J - O'riginal"]["misplaced"]
+    assert (m["folder_artist"], m["name_artist"], m["target"]) == ("Kery James", "Ideal J", None)
 
     # fixing the tags clears the flag
     fixes.save_album("Nas/Reasonable Doubt", {"albumartist": "Nas"}, {

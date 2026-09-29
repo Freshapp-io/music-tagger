@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import analysis, auth, autotag, config, db, fixes, genres, jobs, musicbrainz, scanner
+from . import analysis, auth, autotag, config, db, discogs, fixes, genres, jobs, musicbrainz, scanner, sources
 
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 
@@ -167,7 +167,7 @@ def status():
         "trash_dir": str(config.TRASH_DIR),
         "tracks": n_tracks, "albums": n_albums, "counts": counts, "last_scan": last_scan,
         "job": j.as_dict() if j else None,
-        "navidrome": bool(config.NAVIDROME_URL), "version": config.VERSION, "user": config.APP_USER,
+        "navidrome": bool(config.NAVIDROME_URL), "discogs": discogs.enabled(), "version": config.VERSION, "user": config.APP_USER,
     }
 
 
@@ -459,15 +459,30 @@ def mb_recordings(artist: str = "", title: str = ""):
         raise HTTPException(502, f"MusicBrainz : {e}")
 
 
+@app.get("/api/discogs/search")
+def discogs_search(artist: str = "", album: str = "", n: Optional[int] = None):
+    if not discogs.enabled():
+        raise HTTPException(400, "DISCOGS_TOKEN non configuré")
+    try:
+        return discogs.search(artist, album, n)
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"Discogs : {e}")
+
+
+def _release(release_id):
+    try:
+        return sources.release(release_id)
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"{'Discogs' if sources.is_discogs(release_id) else 'MusicBrainz'} : {e}")
+
+
 @app.get("/api/mb/match")
 def mb_match(dir: str, release: str):
-    try:
-        rel = musicbrainz.release(release)
-    except httpx.HTTPError as e:
-        raise HTTPException(502, f"MusicBrainz : {e}")
+    """Tracklist of a release (MusicBrainz, or Discogs for 'discogs:' ids) mapped onto the folder."""
+    rel = _release(release)
     with db.session() as c:
         files = fixes.tracks_of(c, dir)
-    return {"release": rel, "mapping": musicbrainz.match(files, rel)}
+    return {"release": rel, "mapping": musicbrainz.match(files, rel), "genre": sources.genre(rel)}
 
 
 class MbApply(BaseModel):
@@ -475,15 +490,23 @@ class MbApply(BaseModel):
     release: str
     mapping: list[dict]
     cover: bool = False
+    genre: bool = False          # fill empty genres with the release's genre (Discogs)
 
 
 @app.post("/api/mb/apply")
 def mb_apply(req: MbApply):
-    rel = musicbrainz.release(req.release)
-    changes = musicbrainz.changes_for(rel, req.mapping)
-    cover = musicbrainz.cover(req.release) if req.cover else None
+    rel = _release(req.release)
+    changes = sources.changes_for(rel, req.mapping)
+    genre = sources.genre(rel) if req.genre else None
+    if genre:
+        with db.session() as c:
+            empty = {t["path"] for t in fixes.tracks_of(c, req.dir) if not t["genre"]}
+        for path, ch in changes.items():
+            if path in empty:
+                ch["genre"] = genre
+    cover = sources.cover(rel) if req.cover else None
     with jobs.acquire_or_busy():
-        batch, n, dirs = fixes.write_many(changes, f"MusicBrainz : {rel['albumartist']} – {rel['title']}", cover=cover)
+        batch, n, dirs = fixes.write_many(changes, f"{sources.name(rel)} : {rel['albumartist']} – {rel['title']}", cover=cover)
         analysis.analyze_dirs(dirs | {req.dir})
     return {"batch": batch, "files": n, "cover": bool(cover)}
 
@@ -497,7 +520,8 @@ def genres_list():
 
 @app.post("/api/genres/musicbrainz")
 def genres_musicbrainz():
-    return jobs.start("genres-mb", "Genres des artistes sur MusicBrainz", genres.mb_lookup).as_dict()
+    label = "Genres des artistes sur MusicBrainz" + (" et Discogs" if discogs.enabled() else "")
+    return jobs.start("genres-mb", label, genres.mb_lookup).as_dict()
 
 
 @app.get("/api/genres/detail")

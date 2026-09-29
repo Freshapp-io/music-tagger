@@ -1,7 +1,7 @@
-"""Automatic tagging from MusicBrainz, in two steps:
+"""Automatic tagging from MusicBrainz (and Discogs when a token is set), in two steps:
 
 1. analyse(): for each folder, look releases up by track lengths (CD table of
-   contents) and by name, match the files to each candidate and give it a
+   contents) and by name on MusicBrainz, and by name on Discogs, match the files to each candidate and give it a
    0-100 confidence score. Results are stored in the `autotag` table.
 2. apply(): write the chosen release on the folders the user kept, with the
    options (album artist, genre, cover, only fill empty fields).
@@ -11,10 +11,11 @@ import json
 from datetime import datetime
 from statistics import mean
 
-from . import analysis, db, fixes, genres, musicbrainz
+from . import analysis, db, discogs, fixes, genres, musicbrainz, sources
 from .parsing import fold, norm_album, norm_title, parse_dir, parse_filename, primary_artist
 
 MAX_CANDIDATES = 4
+DISCOGS_CANDIDATES = 2     # each one costs a request: Discogs search gives no tracklist
 AMBIGUITY_GAP = 5          # two different albums closer than this: do not auto-apply
 DEFAULT_OPTIONS = {
     "min_score": 95, "albumartist_mode": "mb", "albumartist_value": "",
@@ -111,15 +112,31 @@ def analyse_dir(rel_dir):
             if len(candidates) >= MAX_CANDIDATES + 2:
                 break
     candidates = candidates[:MAX_CANDIDATES + 1]
+    if discogs.enabled() and (hints["album"] or hints["artist"]):
+        try:
+            found = discogs.search(hints["artist"] or "", hints["album"] or "", len(files))
+        except Exception:        # Discogs down: MusicBrainz alone
+            found = []
+        candidates += [(r["id"], False) for r in found if r["score"] >= 80][:DISCOGS_CANDIDATES]
     if not candidates:
         return {"status": "none", "score": 0,
                 "details": {"reason": "aucune édition trouvée (ni par les durées, ni par le nom)"}}
 
     scored = []
     for rid, via_toc in candidates:
-        rel = musicbrainz.release(rid)
+        try:
+            rel = sources.release(rid)
+        except Exception:
+            if sources.is_discogs(rid):
+                continue
+            raise
+        if not rel["tracks"]:
+            continue
         score, details = evaluate(files, rel, hints, via_toc)
         scored.append((score, rel, details))
+    if not scored:
+        return {"status": "none", "score": 0,
+                "details": {"reason": "aucune édition trouvée (ni par les durées, ni par le nom)"}}
     scored.sort(key=lambda x: (-x[0], x[2]["avg_gap"] if x[2]["avg_gap"] is not None else 99))
     status, best_score, best, details = _decide(scored)
     details["hints"] = hints
@@ -216,8 +233,9 @@ def apply(job, dirs, options):
             job.error(d, details.get("reason") or status)
             continue
         try:
-            rel = musicbrainz.release(release_id)
-            changes = musicbrainz.changes_for(rel, details["mapping"])
+            rel = sources.release(release_id)
+            changes = sources.changes_for(rel, details["mapping"])
+            release_genre = sources.genre(rel) if opts["fill_genre"] else None
             with db.session() as c:
                 current = {t["path"]: t for t in fixes.tracks_of(c, d)}
             folder_artist = (details.get("hints") or {}).get("artist")
@@ -230,15 +248,15 @@ def apply(job, dirs, options):
                     if fa:
                         ch["albumartist"] = fa
                 if infer and not t.get("genre"):
-                    g = infer({**t, "albumartist": ch.get("albumartist"), "artist": ch.get("artist")})
+                    g = infer({**t, "albumartist": ch.get("albumartist"), "artist": ch.get("artist")}) or release_genre
                     if g:
                         ch["genre"] = g
                 if opts["only_empty"]:
                     for k in list(ch):
                         if k in ("albumartist", "artist", "album", "title", "track", "disc", "year", "genre") and t.get(k):
                             ch.pop(k)
-            cover = musicbrainz.cover(rel["id"]) if opts["cover"] and rel.get("cover") else None
-            _, n, ds = fixes.write_many(changes, f"Tag auto MusicBrainz ({len(todo)} dossiers)", batch,
+            cover = sources.cover(rel) if opts["cover"] else None
+            _, n, ds = fixes.write_many(changes, f"Tag auto {sources.name(rel)} ({len(todo)} dossiers)", batch,
                                         cover=cover, job=job)
             n_files += n
             touched |= ds | {d}

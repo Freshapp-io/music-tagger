@@ -176,7 +176,9 @@ def missing_artists():
     canon = canon_list()
     tracks = _load()
     infer = Inferer(tracks, canon)
-    known = mb_artist_genres()
+    from . import discogs
+    # None: MusicBrainz knew nothing, worth asking Discogs once it is set up.
+    known = {k: v for k, v in mb_artist_genres().items() if v is not None or not discogs.enabled()}
     out = {}
     for t in tracks:
         if (t["genre"] and classify(t["genre"], canon)[0] not in (None, JUNK)) or infer(t):
@@ -188,25 +190,38 @@ def missing_artists():
     return out
 
 
+def _first_canonical(tags, canon):
+    for tag in tags:
+        g = classify(tag, canon)[0]
+        if g and g != JUNK:
+            return g
+    return None
+
+
 def mb_lookup(job):
-    """Ask MusicBrainz for the genre of artists we know nothing about."""
-    from . import musicbrainz
+    """Ask MusicBrainz, then Discogs when set up, for the genre of artists we
+    know nothing about. Stored per artist: the genre, None (MusicBrainz found
+    nothing) or '' (neither source found anything)."""
+    from . import discogs, musicbrainz
     canon = canon_list()
     todo = missing_artists()
+    asked_mb = mb_artist_genres()
     job.total = len(todo)
     found = 0
     for key, name in todo.items():
-        job.step(f"MusicBrainz : {name}")
         genre = None
         try:
-            tags, country = musicbrainz.artist_tags(name)
-            for tag in tags:
-                g = classify(tag, canon)[0]
-                if g and g != JUNK:
-                    genre = g
-                    break
-            if genre == "Hip-Hop" and country in FRENCH_COUNTRIES and "Rap français" in canon:
-                genre = "Rap français"
+            if key not in asked_mb:
+                job.step(f"MusicBrainz : {name}")
+                tags, country = musicbrainz.artist_tags(name)
+                genre = _first_canonical(tags, canon)
+                if genre == "Hip-Hop" and country in FRENCH_COUNTRIES and "Rap français" in canon:
+                    genre = "Rap français"
+            else:
+                job.step()
+            if not genre and discogs.enabled():
+                job.message = f"Discogs : {name}"
+                genre = _first_canonical(discogs.artist_genres(name), canon) or ""
         except Exception as e:  # network hiccup: keep going, retry next time
             job.error(name, e)
             continue
