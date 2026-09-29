@@ -538,6 +538,10 @@ async function albumEditor(root, dir, opts = {}) {
   const coverTrack = tracks.find((tk) => tk.has_cover);
   const allComp = tracks.length && tracks.every((tk) => tk.compilation);
   const isVarious = a.issues.includes("various") || s.compilation || allComp;
+  // Why the album is handled as a compilation (it then opens track by track).
+  const compilReason = allComp ? t("flag compilation sur toutes les pistes")
+    : s.compilation ? t("plusieurs artistes différents")
+    : a.issues.includes("various") ? t("album artist ou artiste « Various Artists »") : "";
   const cur = {
     albumartist: majorityOf(tracks.map((tk) => tk.albumartist)),
     album: majorityOf(tracks.map((tk) => tk.album)),
@@ -566,7 +570,7 @@ async function albumEditor(root, dir, opts = {}) {
       ${coverTrack ? `<img src="/api/cover?${qs({ path: coverTrack.path })}" alt="">` : `<img alt="">`}
       <div class="grow">
         <h1>${esc((a.dir || "/").split("/").pop())}</h1>
-        <div>${loose ? `<span class="chip">${t("pistes indépendantes")}</span> ` : ""}${badges(a.issues)} ${subBadges(a.issues)}</div>
+        <div>${loose ? `<span class="chip">${t("pistes indépendantes")}</span> ` : ""}${isVarious && !loose ? `<span class="badge b-compil" title="${esc(compilReason)}">${t("compilation")}</span> ` : ""}${badges(a.issues)} ${subBadges(a.issues)}</div>
         <div class="muted small" style="margin-top:4px">${t("{n} pistes", { n: a.n_tracks })} · ${fmtDur(a.duration)} · ${a.avg_bitrate} kbps${a.vbr ? " VBR" : ""} · ${fmtSize(a.total_size)} · ${t("qualité {q}", { q: a.quality })}</div>
         ${s.reason ? `<div class="small conf-${s.confidence}">${t("Suggestion {conf} :", { conf: CONF[s.confidence] })} ${esc(tr(s.reason))}</div>` : ""}
       </div>
@@ -588,12 +592,7 @@ async function albumEditor(root, dir, opts = {}) {
       <label class="small"${tip("tip.loose")}><input type="checkbox" class="ed-loose" ${loose ? "checked" : ""}> ${t("Pistes indépendantes (mixtapes, singles) : chaque fichier est un album")}</label>
     </div>
 
-    <div class="toolbar">
-      <b>${t("Pistes")}</b>
-      <div class="seg">
-        <button data-view="table">${t("Tableau")}</button><button data-view="cards">${t("Piste par piste")}</button>
-      </div>
-      <span class="grow"></span>
+    <div class="toolbar ed-block">
       <button class="ed-fill-empty"${tip("tip.fillempty")}>${t("Compléter les vides depuis les noms de fichiers")}</button>
       <button class="ed-fill-all"${tip("tip.fillall")}>${t("Tout remplacer depuis les noms de fichiers")}</button>
       ${loose ? `<button class="primary ed-loose-fill"${tip("tip.loosefill")}>${t("Chaque fichier = un album")}</button>`
@@ -611,6 +610,14 @@ async function albumEditor(root, dir, opts = {}) {
         </optgroup>
       </select>
     </div>
+    <div class="toolbar ed-block">
+      <b>${t("Pistes")}</b>
+      <div class="seg">
+        <button data-view="table">${t("Tableau")}</button><button data-view="cards">${t("Piste par piste")}</button>
+      </div>
+    </div>
+    <div class="ed-viewinfo"></div>
+    <div class="ed-missing"></div>
     <div class="ed-numwarn"></div>
     <div class="ed-tracks"></div>
 
@@ -641,7 +648,7 @@ async function albumEditor(root, dir, opts = {}) {
     const all = distinctVals(k);
     inp._orig = all.length === 1 && tracks.every((tk) => tk[k]) ? all[0] : null;
     mark(inp, inp._orig);
-    inp.oninput = () => { dirty.add(k); mark(inp, inp._orig); };
+    inp.oninput = () => { dirty.add(k); mark(inp, inp._orig); if (k === "album") showMissing(); };
   }
   for (const b of $$("[data-pick]", root)) b.onclick = () => {
     const inp = $(`[data-album="${b.dataset.pick}"]`, root);
@@ -668,8 +675,38 @@ async function albumEditor(root, dir, opts = {}) {
         vals[inp.dataset.path][inp.dataset.f] = inp.value;
         mark(inp, orig[inp.dataset.path][inp.dataset.f]);
         if (inp.dataset.f === "track" || inp.dataset.f === "disc") showNumbering();
+        else showMissing();
       };
     }
+  };
+  // Tracks still lacking title / artist / album (what makes an album "untagged"),
+  // with the values being edited: highlighted until they are filled in.
+  const albumFieldValue = () => ($('[data-album="album"]', root) || { value: "" }).value.trim();
+  const MISSING_LABEL = { title: t("titre"), artist: t("artiste"), album: t("album") };
+  const missingOf = (tk) => {
+    const v = vals[tk.path], out = [];
+    if (!(v.title || "").trim()) out.push("title");
+    if (!(v.artist || "").trim()) out.push("artist");
+    if (loose ? !(v.album || "").trim() : !(tk.album || albumFieldValue())) out.push("album");
+    return out;
+  };
+  const showMissing = () => {
+    let n = 0;
+    for (const tk of tracks) {
+      const miss = missingOf(tk);
+      n += miss.length > 0;
+      for (const el of $$(`[data-path="${CSS.escape(tk.path)}"]`, $(".ed-tracks", root))) {
+        if (el.tagName === "INPUT") {
+          el.classList.toggle("missing", miss.includes(el.dataset.f));
+          continue;
+        }
+        el.classList.toggle("warn-row", miss.length > 0);
+        const label = $(".miss-label", el);
+        if (label) label.innerHTML = miss.length ? ` <span class="badge b-missing">${t("manque : {list}", { list: miss.map((f) => MISSING_LABEL[f]).join(", ") })}</span>` : "";
+      }
+    }
+    $(".ed-missing", root).innerHTML = n
+      ? `<div class="notice small">⚠ ${t("{n} piste(s) incomplète(s) (sans titre, artiste ou album) : surlignée(s) ci-dessous.", { n })}</div>` : "";
   };
   const numRows = () => tracks.map((tk) => ({ path: tk.path, track: vals[tk.path].track, disc: vals[tk.path].disc, guessDisc: tk.guess.disc }));
   const showNumbering = () => {
@@ -693,11 +730,11 @@ async function albumEditor(root, dir, opts = {}) {
         <thead><tr><th></th><th class="num">${t("Disque")}</th><th class="num">${t("N°")}</th><th>${t("Titre")}</th><th>${t("Artiste")}</th>
           ${loose ? `<th>${t("Album artist")}</th><th>${t("Album")}</th>` : ""}<th>${t("Fichier")}</th><th>kbps</th></tr></thead>
         <tbody>${tracks.map((tk) => `
-          <tr>
+          <tr data-path="${esc(tk.path)}">
             <td>${playBtn(tk)}</td>
             <td>${input(tk, "disc")}</td><td>${input(tk, "track")}</td><td>${input(tk, "title")}</td><td>${input(tk, "artist")}</td>
             ${loose ? `<td>${input(tk, "albumartist")}</td><td>${input(tk, "album")}</td>` : ""}
-            <td class="small mono" title="${esc(tk.filename)}">${esc(tk.filename)}${tk.tagged ? "" : " " + untaggedBadge}${tk.error ? ` <span class="badge b-untagged" title="${esc(tk.error)}">${t("erreur")}</span>` : ""}</td>
+            <td class="small mono" title="${esc(tk.filename)}">${esc(tk.filename)}${tk.tagged ? "" : " " + untaggedBadge}<span class="miss-label"></span>${tk.error ? ` <span class="badge b-untagged" title="${esc(tk.error)}">${t("erreur")}</span>` : ""}</td>
             <td class="small">${tk.bitrate || "?"}${tk.bitrate_mode === "VBR" ? "v" : ""}</td>
           </tr>`).join("")}</tbody></table>`;
     } else {
@@ -707,7 +744,7 @@ async function albumEditor(root, dir, opts = {}) {
             ${playBtn(tk)}
             <span class="mono small">${esc(tk.filename)}</span>
             <span class="muted small">${fmtDur(tk.duration)} · ${tk.bitrate || "?"} kbps</span>
-            ${tk.tagged ? "" : untaggedBadge}
+            ${tk.tagged ? "" : untaggedBadge}<span class="miss-label"></span>
             <span class="grow"></span>
             <span class="tstate small">${saved.has(tk.path) ? "✓ " + t("enregistré") : ""}</span>
           </div>
@@ -727,6 +764,11 @@ async function albumEditor(root, dir, opts = {}) {
     }
     bindInputs();
     bindPlay(box);
+    showMissing();
+    $(".ed-viewinfo", root).innerHTML = view === "cards" && isVarious && !loose
+      ? `<div class="small muted view-info">${t("Traité comme une compilation ({why}) : chaque piste s'édite, se cherche sur MusicBrainz et s'enregistre séparément.", { why: esc(compilReason) })}
+          <button class="link to-table">${t("Voir en tableau")}</button></div>` : "";
+    if ($(".to-table", root)) $(".to-table", root).onclick = () => { view = "table"; renderTracks(); };
     for (const b of $$(".use-guess", box)) b.onclick = () => {
       const tk = tracks.find((x) => x.path === b.dataset.path);
       for (const f of ["track", "title", "artist"]) if (tk.guess[f]) vals[tk.path][f] = tk.guess[f];

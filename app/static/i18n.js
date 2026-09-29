@@ -417,6 +417,16 @@ const EN = {
   "Vos modifications non enregistrées seront perdues. Continuer ?": "Your unsaved changes will be lost. Continue?",
   "Album artist ≠ artiste (pistes indépendantes)": "Album artist ≠ artist (independent tracks)",
 
+  // ---- incomplete tracks, compilation view
+  "flag compilation sur toutes les pistes": "compilation flag on every track",
+  "plusieurs artistes différents": "several different artists",
+  "album artist ou artiste « Various Artists »": "album artist or artist “Various Artists”",
+  "Traité comme une compilation ({why}) : chaque piste s'édite, se cherche sur MusicBrainz et s'enregistre séparément.": "Handled as a compilation ({why}): each track is edited, looked up on MusicBrainz and saved on its own.",
+  "Voir en tableau": "Show as a table",
+  "titre": "title", "artiste": "artist",
+  "manque : {list}": "missing: {list}",
+  "{n} piste(s) incomplète(s) (sans titre, artiste ou album) : surlignée(s) ci-dessous.": "{n} incomplete track(s) (no title, artist or album): highlighted below.",
+
   // ---- track / disc numbering
   "Numérotation…": "Numbering…",
   "N° de piste": "Track number", "N° de disque": "Disc number",
