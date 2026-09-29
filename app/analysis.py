@@ -94,6 +94,11 @@ def suggest(rel_dir, tracks):
     }
 
 
+# Default values written by rippers and tag editors: no artist at all.
+PLACEHOLDER_ARTISTS = {"new artist", "unknown artist", "unknown", "artist", "artiste", "artiste inconnu",
+                       "inconnu", "no artist", "untitled artist", "track"}
+
+
 def tag_artist(tracks):
     """Album artist the tags themselves agree on (80 % of the tracks), from the
     album artist or else the main artist. None for compilations or when unsure:
@@ -106,7 +111,7 @@ def tag_artist(tracks):
             return None
         best, share = majority(values)
         if best and share >= 0.8:
-            return best
+            return None if fold(best) in PLACEHOLDER_ARTISTS else best
     return None
 
 
@@ -350,8 +355,15 @@ def _same_artist(a, b):
         return True
     short, long_ = sorted((ka, kb), key=len)
     # 'Jay-Z' / 'Jay-Z & Kanye West', or a small spelling difference
-    return bool(re.search(r"\b" + re.escape(short) + r"\b", long_)) or \
-        difflib.SequenceMatcher(None, ka, kb).ratio() >= 0.85
+    if re.search(r"\b" + re.escape(short) + r"\b", long_) or difflib.SequenceMatcher(None, ka, kb).ratio() >= 0.85:
+        return True
+    # 'Alton Ellis' / 'Alton and Hortense Ellis': every word of one is in the other
+    ws, wl = set(short.split()) - {"and", "et"}, set(long_.split())
+    if ws and ws <= wl:
+        return True
+    # 'Abcdr du Son' / 'Abcdrduson.com': same letters once spaces are gone
+    cs, cl = short.replace(" ", ""), long_.replace(" ", "")
+    return len(cs) >= 5 and cs in cl
 
 
 def _album_folder(rel_dir):
@@ -395,7 +407,8 @@ def find_misplaced(albums):
       artist in the album folder name), tags or not;
     - folder vs tags: the folder names an artist of the library (parent folder
       or 'Artist - Album' name) while the tags agree on another artist.
-    info = {folder_artist, folder, name_artist, tag_artist, target}."""
+    info = {folder_artist, folder, name_artist, tag_artist, target, kinds}
+    with kinds among 'folders' and 'tags'."""
     # Artists of the library: album artists, and track artists (a folder named
     # after an artist who only appears as a track artist is still theirs).
     known = {_artist_key(a["tag_artist"]) for a in albums if a["tag_artist"]}
@@ -424,7 +437,7 @@ def find_misplaced(albums):
         split = _name_split(parts[-1])
         tag_albums = [x for x in json.loads(a.get("albums") or "[]") if x]
         info = {"folder_artist": None, "folder": None, "name_artist": None, "tag_artist": artist, "target": None}
-        flagged = False
+        kinds = []
 
         # 1. folder vs folder
         if len(parts) >= 2 and split:
@@ -436,7 +449,7 @@ def find_misplaced(albums):
                 parent_is_artist = _artist_key(parent) in known or convention[parent_path] >= 2
                 if left_is_artist and parent_is_artist and not _same_artist(left, parent):
                     info.update(folder_artist=parent, folder=parent_path, name_artist=left)
-                    flagged = True
+                    kinds.append("folders")
 
         # 2. folder vs tags
         if artist:
@@ -452,9 +465,19 @@ def find_misplaced(albums):
                     info["name_artist"] = found[0]
                 elif not info["folder_artist"]:
                     info.update(folder_artist=found[0], folder=found[1])
-                flagged = True
-        if not flagged:
+                kinds.append("tags")
+        if not kinds:
             continue
+        info["kinds"] = kinds
+        # Show the other folder name too when it names the artist ('Adrian Younge/Adrian Younge - …').
+        if len(parts) >= 2 and not info["folder_artist"]:
+            parent = parts[-2]
+            if _artist_key(parent) in known or convention["/".join(parts[:-1])] >= 2 or \
+                    (info["name_artist"] and _same_artist(parent, info["name_artist"])):
+                info.update(folder_artist=parent, folder="/".join(parts[:-1]))
+        if split and not info["name_artist"] and (
+                _artist_key(split[0]) in known or (info["folder_artist"] and _same_artist(split[0], info["folder_artist"]))):
+            info["name_artist"] = split[0]
 
         # Where it should go: the tags' artist, else (no tags) the one in the folder name.
         right_artist = artist or info["name_artist"]
@@ -473,7 +496,9 @@ def compute_misplaced():
         found = find_misplaced(albums)
         for a in albums:
             info = found.get(a["dir"])
-            issues = [i for i in json.loads(a["issues"]) if i != "misplaced"] + (["misplaced"] if info else [])
+            issues = [i for i in json.loads(a["issues"]) if not i.startswith("misplaced")]
+            if info:
+                issues += ["misplaced"] + [f"misplaced_{k}" for k in info["kinds"]]
             value = json.dumps(info, ensure_ascii=False) if info else None
             if value != a["misplaced"] or issues != json.loads(a["issues"]):
                 c.execute("UPDATE albums SET misplaced=?, issues=? WHERE dir=?", (value, json.dumps(issues), a["dir"]))

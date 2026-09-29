@@ -50,7 +50,9 @@ def write_many(changes_by_path, label, batch=None, cover=None, job=None):
 
 def tracks_of(c, rel_dir):
     return [dict(r) for r in c.execute(
-        "SELECT * FROM tracks WHERE dir=? ORDER BY CAST(disc AS INTEGER), CAST(track AS INTEGER), filename",
+        # no disc number = disc 1, so that mixed '1/1' / empty discs keep the track order
+        "SELECT * FROM tracks WHERE dir=? ORDER BY COALESCE(NULLIF(CAST(disc AS INTEGER), 0), 1), "
+        "CAST(track AS INTEGER), filename",
         (rel_dir,))]
 
 

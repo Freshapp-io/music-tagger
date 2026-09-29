@@ -88,14 +88,20 @@ def evaluate(files, rel, hints, via_toc=False):
     }
 
 
+def folder_hints(rel_dir):
+    """Artist / album the folder is believed to hold (its suggestion)."""
+    with db.session() as c:
+        a = c.execute("SELECT suggestion FROM albums WHERE dir=?", (rel_dir,)).fetchone()
+    sug = json.loads(a["suggestion"]) if a else {}
+    return {"artist": sug.get("albumartist") if sug.get("albumartist") != analysis.VARIOUS else None,
+            "album": sug.get("album")}
+
+
 def analyse_dir(rel_dir):
     """Best candidate for a folder: dict ready for the autotag table."""
     with db.session() as c:
         files = fixes.tracks_of(c, rel_dir)
-        a = c.execute("SELECT suggestion FROM albums WHERE dir=?", (rel_dir,)).fetchone()
-    sug = json.loads(a["suggestion"]) if a else {}
-    hints = {"artist": sug.get("albumartist") if sug.get("albumartist") != analysis.VARIOUS else None,
-             "album": sug.get("album")}
+    hints = folder_hints(rel_dir)
     if not files:
         return {"status": "none", "score": 0, "details": {"reason": "aucun fichier"}}
     durations = [f["duration"] for f in files]

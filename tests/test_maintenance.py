@@ -52,13 +52,15 @@ def test_misplaced_album(library, job):
                        "Kery James/Ideal J - O'riginal"}
     assert a["Nas/Reasonable Doubt"]["misplaced"] == {
         "folder_artist": "Nas", "folder": "Nas", "name_artist": None, "tag_artist": "Jay-Z",
-        "target": "Jay-Z/Reasonable Doubt"}
+        "target": "Jay-Z/Reasonable Doubt", "kinds": ["tags"]}
     assert a["Mobb Deep - Illmatic Remix"]["misplaced"] == {
         "folder_artist": None, "folder": None, "name_artist": "Mobb Deep", "tag_artist": "Nas",
-        "target": "Nas/Mobb Deep - Illmatic Remix"}
+        "target": "Nas/Mobb Deep - Illmatic Remix", "kinds": ["tags"]}
     assert a["Nas/Jay-Z - The Blueprint 2"]["misplaced"] == {
         "folder_artist": "Nas", "folder": "Nas", "name_artist": "Jay-Z", "tag_artist": None,
-        "target": "Jay-Z/Jay-Z - The Blueprint 2"}
+        "target": "Jay-Z/Jay-Z - The Blueprint 2", "kinds": ["folders"]}
+    assert {"misplaced_folders"} <= set(a["Nas/Jay-Z - The Blueprint 2"]["issues"])
+    assert "misplaced_folders" not in a["Nas/Reasonable Doubt"]["issues"]
     m = a["Kery James/Ideal J - O'riginal"]["misplaced"]
     assert (m["folder_artist"], m["name_artist"], m["target"]) == ("Kery James", "Ideal J", None)
 
@@ -66,6 +68,33 @@ def test_misplaced_album(library, job):
     fixes.save_album("Nas/Reasonable Doubt", {"albumartist": "Nas"}, {
         t: {"artist": "Nas"} for t in (f"Nas/Reasonable Doubt/0{i}.mp3" for i in (1, 2, 3))})
     assert "misplaced" not in albums()["Nas/Reasonable Doubt"]["issues"]
+
+
+def test_misplaced_real_cases(library, job):
+    """Cases reported on a real library: none of them is a folder problem."""
+    album(library, "Alton Ellis/Alton and Hortense Ellis - At Studio One", "Alton & Hortense Ellis", "At Studio One")
+    album(library, "Alton Ellis/Alton Ellis - Sunday Coming", "Alton Ellis", "Sunday Coming")
+    album(library, "Abcdr_Du_Son/Abcdr_du_Son_-_From_Scratch_-_Scenario_(2012)", "Abcdrduson.com", "From Scratch")
+    album(library, "Al Campbell/Al Campbell - Roots & Culture", "New Artist", "New Title")
+    album(library, "Adrian Younge/Adrian Younge - There Is Only Now", "Souls of Mischief", "There Is Only Now")
+    album(library, "Adrian Younge/Adrian Younge - Something About April", "Adrian Younge", "Something About April")
+    scanner.scan(job)
+    a = albums()
+    flagged = {d: x["misplaced"] for d, x in a.items() if "misplaced" in x["issues"]}
+    # only the tags disagree, and only for Adrian Younge: shown as 'folder ≠ tags' with both folder names
+    assert list(flagged) == ["Adrian Younge/Adrian Younge - There Is Only Now"]
+    m = flagged["Adrian Younge/Adrian Younge - There Is Only Now"]
+    assert (m["folder_artist"], m["name_artist"], m["tag_artist"], m["kinds"]) == \
+        ("Adrian Younge", "Adrian Younge", "Souls of Mischief", ["tags"])
+
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    with TestClient(app) as client:
+        login(client)
+        only_folders = client.get("/api/albums", params={"issue": "misplaced", "sub": "misplaced_folders"}).json()
+        assert only_folders["total"] == 0
+        assert client.get("/api/albums", params={"issue": "misplaced", "sub": "misplaced_tags"}).json()["total"] == 1
 
 
 def test_scan_errors_are_kept_and_retried(library, job, monkeypatch):

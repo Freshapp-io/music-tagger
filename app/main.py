@@ -485,6 +485,23 @@ def mb_match(dir: str, release: str):
     return {"release": rel, "mapping": musicbrainz.match(files, rel), "genre": sources.genre(rel)}
 
 
+@app.get("/api/release/score")
+def release_score(dir: str, release: str, artist: str = "", album: str = ""):
+    """Grade one release (MusicBrainz or Discogs) against the folder with the
+    auto-tag score: lengths, titles, names. Names typed in the search win over
+    the folder's suggestion."""
+    rel = _release(release)
+    with db.session() as c:
+        files = fixes.tracks_of(c, dir)
+    if not files or not rel["tracks"]:
+        return {"score": 0, "tracks": len(rel["tracks"]), "medium_tracks": len(rel["tracks"])}
+    hints = autotag.folder_hints(dir)
+    hints = {"artist": artist or hints["artist"], "album": album or hints["album"]}
+    score, d = autotag.evaluate(files, rel, hints)
+    return {"score": score, "tracks": len(rel["tracks"]),
+            **{k: d[k] for k in ("medium_tracks", "coverage", "durations", "titles", "names", "avg_gap", "max_gap")}}
+
+
 class MbApply(BaseModel):
     dir: str
     release: str

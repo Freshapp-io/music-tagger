@@ -135,3 +135,26 @@ def test_genre_lookup_falls_back_on_discogs(library, job, monkeypatch):
         db.set_meta(c, "mb_artist_genres", {"nas": None})
     genres.mb_lookup(job)
     assert asked == ["Nas"] and genres.mb_artist_genres() == {"nas": "Hip-Hop"}
+
+
+def test_release_score_endpoint(library, job, monkeypatch):
+    """The manual search grades a release like auto-tagging does."""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    other = {**RELEASE, "id": 333, "title": "Stillmatic", "tracklist": [
+        {"position": "1", "title": "Stillmatic Intro", "duration": "2:10"},
+        {"position": "2", "title": "Ether", "duration": "4:37"},
+        {"position": "3", "title": "Got Ur Self A...", "duration": "4:26"},
+        {"position": "4", "title": "Smokin'", "duration": "4:21"}]}
+    fake_api(monkeypatch, {"releases/111": RELEASE, "releases/333": other})
+    _folder(library)
+    scanner.scan(job)
+    with TestClient(app) as client:
+        login(client)
+        good = client.get("/api/release/score", params={"dir": "Nas - Illmatic", "release": "discogs:111",
+                                                         "artist": "Nas", "album": "Illmatic"}).json()
+        bad = client.get("/api/release/score", params={"dir": "Nas - Illmatic", "release": "discogs:333",
+                                                        "artist": "Nas", "album": "Illmatic"}).json()
+    assert good["score"] >= 95 and good["medium_tracks"] == 3 and good["durations"] == 100
+    assert bad["score"] < 60 and bad["medium_tracks"] == 4

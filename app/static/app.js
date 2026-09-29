@@ -45,9 +45,15 @@ const SUB = {
   year_mixed: t("Années différentes"),
   mbid_mixed: t("ID MusicBrainz différents"),
 };
+// Kinds of "wrong folder": folder names disagreeing with each other, or with the tags.
+const MISPLACED_SUB = {
+  misplaced_folders: t("Noms de dossiers uniquement"),
+  misplaced_tags: t("Dossier ≠ tags"),
+};
+const SUB_FILTERS = { inconsistent: SUB, misplaced: MISPLACED_SUB };
 const CONF = { high: t("sûre"), medium: t("probable"), low: t("incertaine") };
 const badges = (issues) => (issues || []).filter((i) => ISSUE[i]).map((i) => `<span class="badge b-${i}">${ISSUE[i]}</span>`).join("");
-const subBadges = (issues) => (issues || []).filter((i) => SUB[i]).map((i) => `<span class="chip">${SUB[i]}</span>`).join(" ");
+const subBadges = (issues) => (issues || []).filter((i) => SUB[i] || MISPLACED_SUB[i]).map((i) => `<span class="chip">${SUB[i] || MISPLACED_SUB[i]}</span>`).join(" ");
 const chips = (arr, max = 4) => {
   const a = (arr || []).map((x) => x === null ? t("∅ vide") : x);
   const more = a.length > max ? `<span class="chip">+${a.length - max}</span>` : "";
@@ -188,7 +194,7 @@ async function renderList(main, view) {
     <h1>${title}</h1><p class="lead">${lead}</p>
     <div class="toolbar">
       <input type="search" id="q" placeholder="${t("Rechercher (dossier, artiste, album)…")}" value="${esc(st.q)}" style="width:320px">
-      ${view === "inconsistent" ? `<select id="sub"><option value="">${t("Tous les problèmes")}</option>${Object.entries(SUB).map(([k, v]) => `<option value="${k}" ${st.sub === k ? "selected" : ""}>${v}</option>`).join("")}</select>` : ""}
+      ${SUB_FILTERS[view] ? `<select id="sub"${view === "misplaced" ? tip("tip.misplacedsub") : ""}><option value="">${view === "misplaced" ? t("Tous les cas") : t("Tous les problèmes")}</option>${Object.entries(SUB_FILTERS[view]).map(([k, v]) => `<option value="${k}" ${st.sub === k ? "selected" : ""}>${v}</option>`).join("")}</select>` : ""}
       <select id="confidence"><option value="">${t("Toutes confiances")}</option>${Object.entries(CONF).map(([k, v]) => `<option value="${k}" ${st.confidence === k ? "selected" : ""}>${t("Suggestion {conf}", { conf: v })}</option>`).join("")}</select>
       <select id="sort">${Object.entries(sorts).map(([k, v]) => `<option value="${k}" ${st.sort === k ? "selected" : ""}>${v}</option>`).join("")}</select>
       ${view !== "all" ? `<label><input type="checkbox" id="showIgnored" ${st.showIgnored ? "checked" : ""}> ${t("afficher les ignorés")}</label>` : ""}
@@ -451,6 +457,71 @@ function folderContext(d) {
 
 const TRACK_FIELDS = ["disc", "track", "title", "artist"];
 
+// ------------------------------------------------------- track numbering
+/** "4/14" -> {n: 4, total: 14}, "4" -> {n: 4, total: null}, anything else -> null. */
+const numParts = (v) => {
+  const m = String(v ?? "").trim().match(/^(\d+)\s*(?:\/\s*(\d+))?$/);
+  return m ? { n: Number(m[1]), total: m[2] ? Number(m[2]) : null } : null;
+};
+
+/**
+ * Harmonised track / disc numbers. rows: [{path, track, disc, guessDisc}].
+ * mode: track-plain (4), track-total (4/14), disc-clear, disc-plain (1), disc-total (1/2).
+ * Track totals are per disc: the most common existing total when it is plausible
+ * (an incomplete album keeps its 14), else the number of tracks on that disc.
+ * Returns {path: {track} | {disc}}; unnumbered tracks are left alone.
+ */
+function renumber(rows, mode) {
+  const out = {};
+  const discOf = (r) => (numParts(r.disc) || {}).n || null;
+  if (mode === "disc-clear") {
+    rows.forEach((r) => { out[r.path] = { disc: "" }; });
+    return out;
+  }
+  if (mode === "disc-plain" || mode === "disc-total") {
+    const known = rows.map(discOf).filter(Boolean);
+    const fallback = Number(majorityOf(known.map(String))) || Number((rows.find((r) => r.guessDisc) || {}).guessDisc) || 1;
+    const totals = rows.map((r) => (numParts(r.disc) || {}).total).filter(Boolean);
+    const total = Math.max(fallback, ...known, ...totals);
+    rows.forEach((r) => {
+      const d = discOf(r) || fallback;
+      out[r.path] = { disc: mode === "disc-total" ? `${d}/${total}` : String(d) };
+    });
+    return out;
+  }
+  const byDisc = {};
+  rows.forEach((r) => (byDisc[discOf(r) || 1] ||= []).push(r));
+  for (const group of Object.values(byDisc)) {
+    const parts = group.map((r) => numParts(r.track));
+    const common = Number(majorityOf(parts.map((p) => p && p.total && String(p.total)))) || 0;
+    const total = Math.max(common, group.length, ...parts.map((p) => (p ? p.n : 0)));
+    group.forEach((r, i) => {
+      if (parts[i]) out[r.path] = { track: mode === "track-total" ? `${parts[i].n}/${total}` : String(parts[i].n) };
+    });
+  }
+  return out;
+}
+
+/** Human-readable warnings when an album mixes numbering styles ([] when clean). */
+function numberingIssues(rows) {
+  const out = [];
+  const tp = rows.map((r) => numParts(r.track)).filter(Boolean);
+  const withTotal = tp.filter((p) => p.total).length;
+  if (withTotal && withTotal < tp.length) {
+    out.push(t("n° de piste avec et sans total ({a} avec, {b} sans)", { a: withTotal, b: tp.length - withTotal }));
+  } else if (new Set(tp.map((p) => p.total)).size > 1) {
+    out.push(t("totaux de pistes différents ({list})", { list: [...new Set(tp.map((p) => p.total))].join(", ") }));
+  }
+  const discs = rows.map((r) => String(r.disc || "").trim());
+  const empty = discs.filter((d) => !d).length;
+  const dp = discs.filter(Boolean).map(numParts);
+  const dTotal = dp.filter((p) => p && p.total).length;
+  if ((empty && empty < discs.length) || (dTotal && dTotal < dp.length) || dp.some((p) => !p)) {
+    out.push(t("n° de disque hétérogènes ({list})", { list: [...new Set(discs)].map((d) => d || t("vide")).join(", ") }));
+  }
+  return out;
+}
+
 /**
  * Album editor rendered into `root`. Used by the side drawer and by review mode.
  * opts.review: hide the save/ignore buttons (review mode has its own action bar)
@@ -519,7 +590,20 @@ async function albumEditor(root, dir, opts = {}) {
       <button class="ed-fill-empty"${tip("tip.fillempty")}>${t("Compléter les vides depuis les noms de fichiers")}</button>
       <button class="ed-fill-all"${tip("tip.fillall")}>${t("Tout remplacer depuis les noms de fichiers")}</button>
       <button class="ed-artist-aa"${tip("tip.artistaa")}>${t("Artiste = album artist")}</button>
+      <select class="ed-num"${tip("tip.numbering")}>
+        <option value="">${t("Numérotation…")}</option>
+        <optgroup label="${t("N° de piste")}">
+          <option value="track-plain">${t("Numéro seul (1, 2, 3…)")}</option>
+          <option value="track-total">${t("Avec le total (1/14, 2/14…)")}</option>
+        </optgroup>
+        <optgroup label="${t("N° de disque")}">
+          <option value="disc-clear">${t("Vider")}</option>
+          <option value="disc-plain">${t("Numéro seul (1, 2…)")}</option>
+          <option value="disc-total">${t("Avec le total (1/2, 2/2…)")}</option>
+        </optgroup>
+      </select>
     </div>
+    <div class="ed-numwarn"></div>
     <div class="ed-tracks"></div>
 
     <div class="actions">
@@ -567,8 +651,18 @@ async function albumEditor(root, dir, opts = {}) {
   const bindInputs = () => {
     for (const inp of $$("input[data-f]", root)) {
       mark(inp, orig[inp.dataset.path][inp.dataset.f]);
-      inp.oninput = () => { vals[inp.dataset.path][inp.dataset.f] = inp.value; mark(inp, orig[inp.dataset.path][inp.dataset.f]); };
+      inp.oninput = () => {
+        vals[inp.dataset.path][inp.dataset.f] = inp.value;
+        mark(inp, orig[inp.dataset.path][inp.dataset.f]);
+        if (inp.dataset.f === "track" || inp.dataset.f === "disc") showNumbering();
+      };
     }
+  };
+  const numRows = () => tracks.map((tk) => ({ path: tk.path, track: vals[tk.path].track, disc: vals[tk.path].disc, guessDisc: tk.guess.disc }));
+  const showNumbering = () => {
+    const w = numberingIssues(numRows());
+    $(".ed-numwarn", root).innerHTML = w.length
+      ? `<div class="notice small">⚠ ${t("Numérotation hétérogène :")} ${w.map(esc).join(" · ")} — ${t("menu « Numérotation… » pour harmoniser")}</div>` : "";
   };
   const guessLine = (tk) => {
     const g = tk.guess;
@@ -657,12 +751,27 @@ async function albumEditor(root, dir, opts = {}) {
   }
   for (const b of $$(".seg button", root)) b.onclick = () => { view = b.dataset.view; renderTracks(); };
   renderTracks();
+  showNumbering();
+  $(".ed-num", root).onchange = (e) => {
+    const mode = e.target.value;
+    e.target.value = "";
+    if (!mode) return;
+    const changes = renumber(numRows(), mode);
+    let n = 0;
+    for (const [path, ch] of Object.entries(changes)) {
+      for (const [f, v] of Object.entries(ch)) if ((vals[path][f] || "") !== v) { vals[path][f] = v; n++; }
+    }
+    renderTracks();
+    showNumbering();
+    toast(n ? t("{n} piste(s) renumérotée(s) — enregistrez pour écrire les fichiers", { n }) : t("Numérotation déjà harmonisée"));
+  };
 
   const fill = (overwrite) => {
     for (const tk of tracks) for (const f of TRACK_FIELDS) {
       if (tk.guess[f] && (overwrite || !vals[tk.path][f])) vals[tk.path][f] = tk.guess[f];
     }
     renderTracks();
+    showNumbering();
   };
   $(".ed-fill-empty", root).onclick = () => fill(false);
   $(".ed-fill-all", root).onclick = () => fill(true);
@@ -771,27 +880,67 @@ function mbPanel(root, dir, tracks, q, onApplied, editor) {
     const merged = new Map(byDur.releases.map((r) => [r.id, r]));
     for (const r of byName) merged.set(r.id, merged.has(r.id) ? { ...r, by_durations: true } : r);
     for (const r of byDiscogs) merged.set(r.id, r);
-    const res = [...merged.values()].sort((a, b) => (!!b.by_durations - !!a.by_durations) || (b.score - a.score));
+    const res = [...merged.values()].sort((a, b) => (!!b.by_durations - !!a.by_durations) || (b.score - a.score)).slice(0, 20);
+    // The 5 first results of each source get the auto-tag grade (their tracklist is loaded).
+    const isDiscogs = (r) => r.source === "discogs";
+    const toGrade = [...res.filter((r) => !isDiscogs(r)).slice(0, 5), ...res.filter(isDiscogs).slice(0, 5)].map((r) => r.id);
     const nDur = byDur.releases.length;
     const durLine = byDur.failed ? `<span class="conf-low">${t("Recherche par durées indisponible (MusicBrainz ne répond pas)")}</span>`
       : nDur ? `<span class="conf-high">✓ ${t("{n} édition(s) CD dont les {k} durées correspondent, en tête de liste", { n: nDur, k: tracks.length })}</span>`
       : `<span class="muted">${t("Aucune édition CD ne correspond aux {k} durées (il faut exactement le même nombre de pistes que le CD).", { k: tracks.length })}</span>`;
     if (!res.length) { out.innerHTML = `<div class="small">${durLine}</div><div class="muted">${t("Aucun résultat")}</div>`; return; }
-    out.innerHTML = `<div class="small" style="margin-bottom:6px">${durLine}</div>` + res.slice(0, 20).map((r) => `
+    out.innerHTML = `<div class="small" style="margin-bottom:6px">${durLine}</div>` + res.map((r) => `
       <div class="mb-result" data-id="${r.id}">
         <div>${r.by_durations ? `<span class="chip g-clean" title="${t("Nombre de pistes et durées identiques à ce dossier")}">${t("durées ✓")}</span> ` : ""}${r.source === "discogs" ? `<span class="chip src-discogs">Discogs</span> ` : ""}<b>${esc(r.title)}</b> — ${esc(r.artist)} ${r.disambiguation ? `<span class="muted">(${esc(r.disambiguation)})</span>` : ""}
           <div class="small muted">${esc(r.date)} ${esc(r.country)} · ${esc(r.format)} · ${esc(r.label)} · ${esc(r.status)}</div></div>
-        <div class="small" style="text-align:right">${r.tracks === null ? `<span class="muted">${t("pistes : à l'ouverture")}</span>` : `<b class="${r.tracks === tracks.length ? "conf-high" : "conf-medium"}">${t("{n} pistes", { n: r.tracks })}</b>`}<div class="muted">score ${r.score}</div></div>
+        <div class="small mb-side" style="text-align:right">${r.tracks === null ? `<span class="muted">${t("? pistes")}</span>` : `<b class="${r.tracks === tracks.length ? "conf-high" : "conf-medium"}">${t("{n} pistes", { n: r.tracks })}</b>`}
+          <div class="muted mb-note">${toGrade.includes(r.id) ? t("note…") : ""}</div></div>
       </div>`).join("");
     for (const el of $$(".mb-result", out)) el.onclick = () => {
       $$(".mb-result", out).forEach((x) => x.classList.remove("sel"));
       el.classList.add("sel");
       mbMatch(box, dir, tracks, el.dataset.id, onApplied, editor);
     };
+    gradeResults(out, dir, tracks.length, toGrade, { artist, album });
   });
   $(".mb-search", box).onclick = search;
   for (const inp of $$(".mb-artist, .mb-album", box)) inp.onkeydown = (e) => e.key === "Enter" && search();
   search();          // durations work even when nothing is typed
+}
+
+/**
+ * Fill in the auto-tag grade (lengths, titles, names: 0-100) of some results,
+ * one source after the other at its own pace, then put the best ones first.
+ * A newer search on the same panel stops it.
+ */
+async function gradeResults(out, dir, nFiles, ids, names) {
+  const token = (out._gradeToken = (out._gradeToken || 0) + 1);
+  const row = (id) => $$(".mb-result", out).find((el) => el.dataset.id === id);
+  const pct = (v) => (v === null || v === undefined ? "—" : v + " %");
+  const grade = async (list) => {
+    for (const id of list) {
+      if (out._gradeToken !== token) return;
+      const el = row(id);
+      try {
+        const g = await api("GET", "/api/release/score?" + qs({ dir, release: id, ...names }));
+        if (out._gradeToken !== token || !el) return;
+        el.dataset.note = g.score;
+        const cls = g.score >= 90 ? "conf-high" : g.score >= 75 ? "conf-medium" : "conf-low";
+        const detail = t("durées {d} · titres {t} · noms {n}", { d: pct(g.durations), t: pct(g.titles), n: pct(g.names) }) +
+          (g.avg_gap !== null && g.avg_gap !== undefined ? ` (±${g.avg_gap} s)` : "");
+        $(".mb-side", el).innerHTML = `<b class="${g.medium_tracks === nFiles ? "conf-high" : "conf-medium"}">${t("{n} pistes", { n: g.medium_tracks })}</b>
+          ${g.tracks > g.medium_tracks ? `<span class="muted">/ ${g.tracks}</span>` : ""}
+          <div class="${cls}" title="${esc(detail)}"><b>${t("note {n}", { n: Math.round(g.score) })}</b></div>`;
+      } catch {
+        if (el) $(".mb-note", el).textContent = "";
+      }
+    }
+  };
+  await Promise.all([grade(ids.filter((id) => !id.startsWith("discogs:"))), grade(ids.filter((id) => id.startsWith("discogs:")))]);
+  if (out._gradeToken !== token) return;
+  const rows = $$(".mb-result", out);
+  const graded = rows.filter((el) => el.dataset.note !== undefined).sort((a, b) => b.dataset.note - a.dataset.note);
+  for (const el of [...graded, ...rows.filter((el) => el.dataset.note === undefined)]) out.appendChild(el);
 }
 
 const releaseUrl = (id) => String(id).startsWith("discogs:")

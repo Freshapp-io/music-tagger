@@ -19,7 +19,7 @@ Application web (Docker) pour nettoyer les tags d'une grosse bibliothèque MP3,
 typiquement servie par [Navidrome](https://www.navidrome.org/).
 
 - **Nom technique** : `freshapp-music-tagger`
-- **Version** : 1.9.0
+- **Version** : 1.10.0
 - **Auteur** : FreshApp.io
 
 ### Fonctionnement
@@ -70,7 +70,8 @@ nom du dossier, titres et numéros de piste déduits des noms de fichiers.
   correspondantes), association fichiers ↔ pistes
   (numéro, titre, durée), tags complets avec identifiants MusicBrainz, pochette
   depuis Cover Art Archive. Les modifications en cours (genre…) sont enregistrées
-  avant, et le genre n'est jamais écrasé.
+  avant, et le genre n'est jamais écrasé. Les premiers résultats de chaque source reçoivent la
+  note du Tag auto (durées, titres, noms) et les meilleurs remontent en tête.
 - **Doublons** : la version de meilleure qualité est présélectionnée (bitrate,
   nombre de pistes, pochette, tags complets) ; les autres vont à la corbeille.
 - **Genres** : chaque valeur est rapprochée d'une liste de genres cibles
@@ -80,6 +81,9 @@ nom du dossier, titres et numéros de piste déduits des noms de fichiers.
 - **Thème** : clair, sombre, ou automatique (suit le système), au choix en bas du menu.
 - **Langue** : interface en français ou en anglais (sélecteur FR / EN ; par défaut, la langue du navigateur).
 - **Emplacement** : en éditant un album, le chemin du dossier (cliquable) et les autres albums du même dossier.
+- **Numérotation** : dans la fiche d'un album, le menu *Numérotation…* harmonise les n° de piste
+  (`4` ou `4/14` partout, total calculé par disque) et les n° de disque (vider, numéro seul, avec
+  total) ; un avertissement signale les albums à la numérotation hétérogène.
 - **Supprimer un album** : depuis la fiche de l'album (ou la page *Fichiers en erreur*), après confirmation.
   Les fichiers du dossier quittent la bibliothèque et la base et vont dans la corbeille : annulable
   depuis l'historique tant que la corbeille n'est pas vidée.
@@ -223,7 +227,7 @@ Dockerised web app to clean up the tags of a large MP3 library, typically
 served by [Navidrome](https://www.navidrome.org/).
 
 - **Technical name**: `freshapp-music-tagger`
-- **Version**: 1.9.0
+- **Version**: 1.10.0
 - **Author**: FreshApp.io
 
 ### How it works
@@ -271,7 +275,8 @@ the folder name, titles and track numbers derived from file names.
   Mp3tag's freedb lookup: track lengths and order alone find the matching CD
   releases, even with no tags at all), automatic file ↔ track matching (number, title,
   duration), full tags with MusicBrainz IDs, cover art from Cover Art Archive.
-  Pending edits (genre…) are saved first, and the genre is never overwritten.
+  Pending edits (genre…) are saved first, and the genre is never overwritten. The first results
+  of each source get the auto-tagging score (lengths, titles, names) and the best ones move up.
 - **Duplicates**: the best-quality version is pre-selected (bitrate, number of
   tracks, cover, complete tags); the others go to the trash folder.
 - **Genres**: every value is mapped onto an editable list of target genres.
@@ -281,6 +286,9 @@ the folder name, titles and track numbers derived from file names.
 - **Theme**: light, dark, or automatic (follows the system), chosen at the bottom of the menu.
 - **Language**: French or English interface (FR / EN switch; defaults to the browser language).
 - **Location**: when editing an album, the folder path (clickable) and the other albums of the same folder.
+- **Numbering**: in the album panel, the *Numbering…* menu harmonises track numbers (`4` or
+  `4/14` everywhere, total computed per disc) and disc numbers (clear, number only, with the
+  total); a warning flags albums with mixed numbering.
 - **Deleting an album**: from the album panel (or the *Unreadable files* page), after confirmation.
   The folder's files leave the library and the database and go to the trash: can be undone from
   the history until the trash is emptied.
