@@ -69,6 +69,22 @@ def primary_artist(s):
     return p or s.strip()
 
 
+FEAT_JOIN = re.compile(r"^(?:feat\.?|ft\.?|featuring)$", re.I)
+
+
+def split_credit(credit):
+    """[(name, join phrase)] of a MusicBrainz / Discogs credit -> 'A; B feat. C':
+    distinct artists separated with '; ' (Navidrome files the album under each
+    one), guests kept after 'feat.'."""
+    out = ""
+    for i, (name, join) in enumerate(credit):
+        out += (name or "").strip()
+        if i < len(credit) - 1:
+            j = (join or "").strip()
+            out += f" {j} " if FEAT_JOIN.match(j) else "; "
+    return out.strip()
+
+
 def norm_album(s):
     """Key used to detect the same album under different spellings."""
     if not s:

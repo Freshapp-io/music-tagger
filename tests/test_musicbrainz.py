@@ -98,3 +98,22 @@ def test_retries_after_a_timeout(monkeypatch):
     monkeypatch.setattr(musicbrainz.time, "sleep", lambda s: None)
     musicbrainz._cache.clear()
     assert musicbrainz.search_recordings("X", "Y") == [] and len(calls) == 2
+
+
+def test_credits_split_with_semicolons(monkeypatch):
+    ac = [{"name": "Nas", "joinphrase": " & ", "artist": {"id": "n"}},
+          {"name": "DJ Premier", "joinphrase": " feat. ", "artist": {"id": "p"}},
+          {"name": "Q-Tip", "joinphrase": "", "artist": {"id": "q"}}]
+    duo = [{"name": "Eric B. & Rakim", "joinphrase": "", "artist": {"id": "e"}}]
+    data = {"id": "r", "title": "Alb", "artist-credit": [ac[0], {**ac[1], "joinphrase": ""}],
+            "media": [{"position": 1, "track-count": 2, "tracks": [
+                {"position": 1, "title": "One", "artist-credit": ac, "recording": {"id": "r1", "length": 60000}},
+                {"position": 2, "title": "Two", "artist-credit": duo, "recording": {"id": "r2", "length": 60000}}]}]}
+    monkeypatch.setattr(musicbrainz, "_get", lambda path, params: data)
+    rel = musicbrainz.release("r")
+    assert (rel["albumartist"], rel["albumartists"]) == ("Nas & DJ Premier", "Nas; DJ Premier")
+    assert rel["tracks"][0]["artists"] == "Nas; DJ Premier feat. Q-Tip"
+    assert rel["tracks"][1]["artists"] == "Eric B. & Rakim"          # one artist on MusicBrainz
+    mapping = [{"path": "x/1.mp3", "index": 0}]
+    assert musicbrainz.changes_for(rel, mapping, split=True)["x/1.mp3"]["albumartist"] == "Nas; DJ Premier"
+    assert musicbrainz.changes_for(rel, mapping)["x/1.mp3"]["artist"] == "Nas & DJ Premier feat. Q-Tip"

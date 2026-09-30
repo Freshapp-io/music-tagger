@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import analysis, auth, autotag, config, db, discogs, fixes, genres, jobs, musicbrainz, scanner, sources
+from . import analysis, artists, auth, autotag, config, db, discogs, fixes, genres, jobs, musicbrainz, scanner, sources
 
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 
@@ -169,6 +169,7 @@ def status():
         "tracks": n_tracks, "albums": n_albums, "counts": counts, "last_scan": last_scan,
         "job": j.as_dict() if j else None,
         "navidrome": bool(config.NAVIDROME_URL), "discogs": discogs.enabled(), "version": config.VERSION, "user": config.APP_USER,
+        "split_artists": sources.split_artists(),
     }
 
 
@@ -528,12 +529,13 @@ class MbApply(BaseModel):
     mapping: list[dict]
     cover: bool = False
     genre: bool = False          # fill empty genres with the release's genre (Discogs)
+    split_artists: Optional[bool] = None     # None: the saved setting
 
 
 @app.post("/api/mb/apply")
 def mb_apply(req: MbApply):
     rel = _release(req.release)
-    changes = sources.changes_for(rel, req.mapping)
+    changes = sources.changes_for(rel, req.mapping, req.split_artists)
     genre = sources.genre(rel) if req.genre else None
     if genre:
         with db.session() as c:
@@ -546,6 +548,17 @@ def mb_apply(req: MbApply):
         batch, n, dirs = fixes.write_many(changes, f"{sources.name(rel)} : {rel['albumartist']} – {rel['title']}", cover=cover)
         analysis.analyze_dirs(dirs | {req.dir})
     return {"batch": batch, "files": n, "cover": bool(cover)}
+
+
+class SettingsReq(BaseModel):
+    split_artists: Optional[bool] = None
+
+
+@app.put("/api/settings")
+def settings(req: SettingsReq):
+    if req.split_artists is not None:
+        sources.set_split_artists(req.split_artists)
+    return {"split_artists": sources.split_artists()}
 
 
 # ------------------------------------------------------------------- genres
@@ -600,6 +613,39 @@ def genres_apply(req: GenreApplyReq):
     if not todo:
         return {"status": "done", "kept": len(keep)}
     return jobs.start("genres", f"Genres ({len(todo)} valeur(s))", genres.apply, todo).as_dict()
+
+
+# ------------------------------------------------------------------ artists
+
+@app.get("/api/artists")
+def artists_list():
+    return artists.summary()
+
+
+@app.get("/api/artists/detail")
+def artists_detail(raw: str):
+    return artists.detail(raw)
+
+
+class ArtistItem(BaseModel):
+    raw: str
+    target: str
+
+
+class ArtistApplyReq(BaseModel):
+    items: list[ArtistItem]
+
+
+@app.post("/api/artists/apply")
+def artists_apply(req: ArtistApplyReq):
+    items = [i.model_dump() for i in req.items]
+    for i in items:                      # 'leave alone' is just remembered
+        if i["target"] == artists.KEEP:
+            artists.remember(i["raw"], artists.KEEP)
+    todo = [i for i in items if i["target"] != artists.KEEP]
+    if not todo:
+        return {"status": "done", "kept": len(items)}
+    return jobs.start("artists", f"Artistes ({len(todo)} valeur(s))", artists.apply, todo).as_dict()
 
 
 # ------------------------------------------------------------------ autotag

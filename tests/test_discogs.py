@@ -58,6 +58,7 @@ def test_multi_disc_and_various():
     assert [(t["disc"], t["discs"], t["position"], t["count"]) for t in tracks] == \
         [(1, 2, 1, 2), (1, 2, 2, 2), (2, 2, 1, 1)]
     assert tracks[2]["artist"] == "X, Y"
+    assert tracks[2]["artists"] == "X; Y" and tracks[0]["artists"] == "Various Artists"
     assert discogs._credit([{"name": "Various"}]) == "Various Artists"
     assert discogs._seconds("1:02:03") == 3723 and discogs._seconds("") == 0
 
@@ -158,3 +159,25 @@ def test_release_score_endpoint(library, job, monkeypatch):
                                                         "artist": "Nas", "album": "Illmatic"}).json()
     assert good["score"] >= 95 and good["medium_tracks"] == 3 and good["durations"] == 100
     assert bad["score"] < 60 and bad["medium_tracks"] == 4
+
+
+def test_split_artists_setting(library, job, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    duo = {**RELEASE, "artists": [{"name": "Nas (2)", "join": "&"}, {"name": "DJ Premier", "join": ""}]}
+    fake_api(monkeypatch, {"releases/111": duo})
+    monkeypatch.setattr(discogs, "cover", lambda rel: None)
+    _folder(library)
+    scanner.scan(job)
+    p = str(library / "Nas - Illmatic/01 - The Genesis.mp3")
+    with TestClient(app) as client:
+        login(client)
+        assert client.get("/api/status").json()["split_artists"] is True        # default
+        m = client.get("/api/mb/match", params={"dir": "Nas - Illmatic", "release": "discogs:111"}).json()
+        client.post("/api/mb/apply", json={"dir": "Nas - Illmatic", "release": "discogs:111", "mapping": m["mapping"]})
+        assert tagger.read_fields(p, ["albumartist", "artist"]) == {"albumartist": "Nas; DJ Premier", "artist": "Nas; DJ Premier"}
+
+        assert client.put("/api/settings", json={"split_artists": False}).json() == {"split_artists": False}
+        client.post("/api/mb/apply", json={"dir": "Nas - Illmatic", "release": "discogs:111", "mapping": m["mapping"]})
+        assert tagger.read_fields(p, ["albumartist"]) == {"albumartist": "Nas & DJ Premier"}

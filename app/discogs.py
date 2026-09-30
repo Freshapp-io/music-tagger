@@ -10,7 +10,7 @@ import time
 import httpx
 
 from . import config
-from .parsing import fold, is_various, norm_album
+from .parsing import fold, is_various, norm_album, split_credit
 
 API = "https://api.discogs.com"
 PREFIX = "discogs:"
@@ -75,6 +75,12 @@ def _credit(artists):
     return "Various Artists" if is_various(out) else out
 
 
+def _split(artists):
+    """'Nas & DJ Premier' credited as two artists -> 'Nas; DJ Premier'."""
+    out = split_credit([(_name(a.get("anv") or a.get("name")), a.get("join")) for a in artists or []])
+    return "Various Artists" if is_various(out) else out
+
+
 def _seconds(s):
     """'4:23' or '1:02:03' -> seconds, 0 when unknown."""
     try:
@@ -126,7 +132,7 @@ def search(artist, album, n_tracks=None):
 POSITION = re.compile(r"^(?:cd|dvd|dis[ck])?\s*(\d+)\s*[-.:]\s*(\d+)$", re.I)
 
 
-def _tracklist(tracklist, album_artist):
+def _tracklist(tracklist, album_artist, album_artists=None):
     """Discogs tracklist -> musicbrainz.release() tracks. Headings are skipped,
     'index' tracks (a suite split in movements) count as one track. '2-05' or
     'CD2-5' give the disc; vinyl sides ('A1', 'B2') are one disc. Tracks are
@@ -149,7 +155,8 @@ def _tracklist(tracklist, album_artist):
         pos[disc] = pos.get(disc, 0) + 1
         tracks.append({
             "disc": disc, "discs": len(discs), "position": pos[disc], "count": counts[disc],
-            "title": t.get("title"), "artist": _credit(t.get("artists")) or album_artist, "artist_id": None,
+            "title": t.get("title"), "artist": _credit(t.get("artists")) or album_artist,
+            "artists": _split(t.get("artists")) or album_artists or album_artist, "artist_id": None,
             "recording_id": None, "track_id": None, "length": _seconds(t.get("duration")),
         })
     return tracks
@@ -160,28 +167,32 @@ def release(release_id):
     rid = str(release_id).removeprefix(PREFIX)
     r = _get(f"releases/{rid}")
     albumartist = _credit(r.get("artists"))
+    albumartists = _split(r.get("artists"))
     date = (r.get("released") or str(r.get("year") or "")).replace("-00", "")
     images = r.get("images") or []
     front = next((i for i in images if i.get("type") == "primary"), images[0] if images else None)
     return {
         "id": f"{PREFIX}{r['id']}", "source": "discogs", "title": r.get("title"), "albumartist": albumartist,
+        "albumartists": albumartists,
         "albumartist_id": None, "date": date if date != "0" else "", "year": date[:4] if date != "0" else "",
         "release_group_id": f"discogs-master:{r['master_id']}" if r.get("master_id") else f"{PREFIX}{r['id']}",
         "compilation": is_various(albumartist),
         "cover": (front or {}).get("uri") or None,
         "genres": (r.get("genres") or []) + (r.get("styles") or []),
-        "tracks": _tracklist(r.get("tracklist"), albumartist),
+        "tracks": _tracklist(r.get("tracklist"), albumartist, albumartists),
     }
 
 
-def changes_for(rel, mapping):
+def changes_for(rel, mapping, split=False):
+    """Tags for each mapped file; split: several artists written 'A; B'."""
     out = {}
     for m in mapping:
         if m.get("index") is None:
             continue
         t = rel["tracks"][m["index"]]
         out[m["path"]] = {
-            "album": rel["title"], "albumartist": rel["albumartist"], "artist": t["artist"],
+            "album": rel["title"], "albumartist": split and rel.get("albumartists") or rel["albumartist"],
+            "artist": split and t.get("artists") or t["artist"],
             "title": t["title"], "track": f"{t['position']}/{t['count']}",
             "disc": f"{t['disc']}/{t['discs']}", "year": rel["date"] or None,
             "compilation": "1" if rel["compilation"] else None,

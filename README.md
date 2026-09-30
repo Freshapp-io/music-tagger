@@ -19,7 +19,7 @@ Application web (Docker) pour nettoyer les tags d'une grosse bibliothèque MP3,
 typiquement servie par [Navidrome](https://www.navidrome.org/).
 
 - **Nom technique** : `freshapp-music-tagger`
-- **Version** : 1.11.1
+- **Version** : 1.12.0
 - **Auteur** : FreshApp.io
 
 ### Fonctionnement
@@ -34,6 +34,7 @@ des MP3 comme un album**. Elle détecte :
 | **Tags incohérents** | dans un même dossier : album artist, nom d'album, année ou ID MusicBrainz différents — ce qui fait éclater l'album en plusieurs dans Navidrome |
 | **Doublons** | même album présent dans plusieurs dossiers |
 | **Genres** | genres écrits de mille façons (`Hip-Hop/Rap`, `Rap & Hip-Hop`, `hiphop`…), génériques (`Other`, `Unknown`) ou farfelus |
+| **Artistes multiples** | artiste ou album artist qui réunit plusieurs artistes (`Nas & DJ Premier`, `IAM et Youssoupha`, `Mad Professor meets Lee Perry`) : Navidrome n'y voit qu'un seul artiste |
 | **Mauvais dossier** | album dont l'emplacement ne correspond pas à l'artiste : dossier artiste et nom du dossier album (`Nas/Jay-Z - Reasonable Doubt`) qui désignent deux artistes différents, même sans tags, ou dossier au nom d'un artiste de la bibliothèque alors que les tags en indiquent un autre ; avec la place attendue quand le dossier du bon artiste existe |
 | **Fichiers en erreur** | dossiers contenant des mp3 illisibles (erreur d'accès, fichier corrompu), avec le message d'erreur de chaque fichier et un bouton *Réessayer* |
 
@@ -55,7 +56,10 @@ nom du dossier, titres et numéros de piste déduits des noms de fichiers.
   proche, et n'est alors jamais présélectionné. Options : album artist de
   MusicBrainz, du dossier ou imposé, genre vide complété, pochette, ne remplir que
   les champs vides, **respecter le nombre de pistes** (rejette toute proposition
-  dont le disque n'a pas exactement le nombre de pistes du dossier).
+  dont le disque n'a pas exactement le nombre de pistes du dossier), **séparer les
+  artistes par « ; »** (activé par défaut, réglage partagé avec la recherche d'album :
+  un crédit « Nas & DJ Premier » est écrit `Nas; DJ Premier`, les invités restent après
+  « feat. », un duo crédité comme un seul artiste n'est pas coupé).
 - **Discogs** (optionnel, `DISCOGS_TOKEN`) : deuxième source de tags, très complète pour le
   hip-hop, l'électro et les vinyles. Ses résultats s'ajoutent à ceux de MusicBrainz dans la
   recherche d'album (pastille *Discogs*) et dans le Tag auto, notés de la même façon ; ses genres
@@ -77,6 +81,13 @@ nom du dossier, titres et numéros de piste déduits des noms de fichiers.
 - **Genres** : chaque valeur est rapprochée d'une liste de genres cibles
   modifiable. Les genres vides ou farfelus reprennent le genre habituel de
   l'artiste, du dossier, ou celui trouvé sur MusicBrainz.
+- **Artistes multiples** : chaque valeur est séparée par « ; » (`Nas; DJ Premier`),
+  ce qui range l'album chez chacun des artistes dans Navidrome. La séparation n'est
+  jugée sûre que si chaque partie est déjà un artiste de la bibliothèque ; les duos et
+  groupes (`Eric B. & Rakim`, ou un dossier artiste qui porte le nom entier) sont
+  classés incertains et peuvent être laissés tels quels.
+- **Syntaxe des tags** : une aide (menu, page Artistes multiples, fiche album) résume
+  la bonne écriture de chaque champ : artiste, album artist, album, titre, n°, année, genre.
 - **Écoute** : lecteur intégré sur chaque piste.
 - **Thème** : clair, sombre, ou automatique (suit le système), au choix en bas du menu.
 - **Langue** : interface en français ou en anglais (sélecteur FR / EN ; par défaut, la langue du navigateur).
@@ -232,7 +243,7 @@ Dockerised web app to clean up the tags of a large MP3 library, typically
 served by [Navidrome](https://www.navidrome.org/).
 
 - **Technical name**: `freshapp-music-tagger`
-- **Version**: 1.11.1
+- **Version**: 1.12.0
 - **Author**: FreshApp.io
 
 ### How it works
@@ -247,6 +258,7 @@ an album**. It detects:
 | **Inconsistent tags** | within one folder: different album artist, album name, year or MusicBrainz ID — which makes Navidrome split the album |
 | **Duplicates** | the same album stored in several folders |
 | **Genres** | genres spelled in countless ways (`Hip-Hop/Rap`, `Rap & Hip-Hop`, `hiphop`…), generic (`Other`, `Unknown`) or odd ones |
+| **Multiple artists** | artist or album artist bringing several artists together (`Nas & DJ Premier`, `IAM et Youssoupha`, `Mad Professor meets Lee Perry`): Navidrome sees a single artist |
 | **Wrong folder** | an album whose location does not match its artist: artist folder and album folder name (`Nas/Jay-Z - Reasonable Doubt`) naming two different artists, even without tags, or a folder named after an artist of the library while the tags name another; with the expected location when the right artist's folder exists |
 | **Unreadable files** | folders holding unreadable mp3 files (access error, corrupt file), with each file's error message and a *Retry* button |
 
@@ -268,7 +280,9 @@ the folder name, titles and track numbers derived from file names.
   pre-selected. Options: album artist from MusicBrainz, from the folder or
   forced, empty genre filled in, cover art, fill empty fields only, **respect
   the track count** (rejects any proposal whose disc does not have exactly the
-  folder's number of tracks).
+  folder's number of tracks), **split artists with ";"** (on by default, a setting
+  shared with the album search: a "Nas & DJ Premier" credit is written
+  `Nas; DJ Premier`, guests stay after "feat.", a duo credited as one artist is not split).
 - **Discogs** (optional, `DISCOGS_TOKEN`): a second tag source, very complete for hip-hop,
   electronic music and vinyl. Its results join MusicBrainz's in the album search (*Discogs*
   badge) and in auto-tagging, scored the same way; its genres and styles can fill in empty genres,
@@ -287,6 +301,12 @@ the folder name, titles and track numbers derived from file names.
 - **Genres**: every value is mapped onto an editable list of target genres.
   Empty or odd genres take the artist's usual genre, the folder's, or the one
   found on MusicBrainz.
+- **Multiple artists**: each value is split with "; " (`Nas; DJ Premier`), which
+  files the album under every artist in Navidrome. A split is only called safe when
+  every part is already an artist of the library; duos and bands (`Eric B. & Rakim`,
+  or an artist folder carrying the whole name) are marked uncertain and can be left as is.
+- **Tag syntax**: a help window (menu, Multiple artists page, album panel) sums up how to
+  write each field: artist, album artist, album, title, numbers, year, genre.
 - **Listening**: built-in player on every track.
 - **Theme**: light, dark, or automatic (follows the system), chosen at the bottom of the menu.
 - **Language**: French or English interface (FR / EN switch; defaults to the browser language).

@@ -7,7 +7,7 @@ import time
 import httpx
 
 from . import config
-from .parsing import is_various, norm_title, parse_filename
+from .parsing import is_various, norm_title, parse_filename, split_credit
 
 API = "https://musicbrainz.org/ws/2"
 _lock = threading.Lock()
@@ -50,6 +50,11 @@ def _get(path, params):
 
 def _credit(ac):
     return "".join(a.get("name", a.get("artist", {}).get("name", "")) + a.get("joinphrase", "") for a in ac or []).strip()
+
+
+def _split(ac):
+    """'Nas & DJ Premier' credited as two artists -> 'Nas; DJ Premier'."""
+    return split_credit([(a.get("name", a.get("artist", {}).get("name", "")), a.get("joinphrase", "")) for a in ac or []])
 
 
 def _esc(s):
@@ -120,7 +125,7 @@ def search_recordings(artist, title):
         ac = r.get("artist-credit") or []
         rels = r.get("releases") or []
         out.append({
-            "id": r["id"], "title": r.get("title"), "artist": _credit(ac),
+            "id": r["id"], "title": r.get("title"), "artist": _credit(ac), "artists": _split(ac),
             "artist_id": ac[0]["artist"]["id"] if ac and ac[0].get("artist") else None,
             "length": round((r.get("length") or 0) / 1000),
             "year": (r.get("first-release-date") or "")[:4],
@@ -157,7 +162,7 @@ def release(release_id):
                 "disc": m.get("position", 1), "discs": len(media),
                 "position": t.get("position"), "count": count,
                 "title": t.get("title") or rec.get("title"),
-                "artist": _credit(ac),
+                "artist": _credit(ac), "artists": _split(ac),
                 "artist_id": ac[0]["artist"]["id"] if ac and ac[0].get("artist") else None,
                 "recording_id": rec.get("id"), "track_id": t.get("id"),
                 "length": round((t.get("length") or rec.get("length") or 0) / 1000),
@@ -165,6 +170,7 @@ def release(release_id):
     albumartist = _credit(aa)
     return {
         "id": r["id"], "title": r.get("title"), "albumartist": albumartist,
+        "albumartists": albumartist if is_various(albumartist) else _split(aa),
         "albumartist_id": aa[0]["artist"]["id"] if aa and aa[0].get("artist") else None,
         "date": r.get("date", ""), "year": (r.get("date") or "")[:4],
         "release_group_id": (r.get("release-group") or {}).get("id"),
@@ -245,14 +251,16 @@ def match(files, rel):
     return result
 
 
-def changes_for(rel, mapping):
+def changes_for(rel, mapping, split=False):
+    """Tags for each mapped file; split: several artists written 'A; B'."""
     out = {}
     for m in mapping:
         if m.get("index") is None:
             continue
         t = rel["tracks"][m["index"]]
         out[m["path"]] = {
-            "album": rel["title"], "albumartist": rel["albumartist"], "artist": t["artist"],
+            "album": rel["title"], "albumartist": split and rel.get("albumartists") or rel["albumartist"],
+            "artist": split and t.get("artists") or t["artist"],
             "title": t["title"], "track": f"{t['position']}/{t['count']}",
             "disc": f"{t['disc']}/{t['discs']}", "year": rel["date"] or None,
             "compilation": "1" if rel["compilation"] else None,

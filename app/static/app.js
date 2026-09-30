@@ -94,6 +94,14 @@ async function refreshStatus() {
   setTimeout(refreshStatus, j && j.status === "running" ? 1000 : 8000);
 }
 
+/** Saved setting shared by the auto-tag and the manual release search. */
+function setSplitArtists(on) {
+  run(async () => {
+    const r = await api("PUT", "/api/settings", { split_artists: on });
+    if (status) status.split_artists = r.split_artists;
+  });
+}
+
 // ------------------------------------------------------------------ router
 const listState = {};
 function stateFor(view) {
@@ -113,6 +121,7 @@ async function render() {
   if (view === "history") return renderHistory(main);
   if (view === "review") return renderReview(main);
   if (view === "genres") return renderGenres(main);
+  if (view === "artists") return renderArtists(main);
   if (view === "autotag") return renderAutotag(main);
   if (view === "errors") return renderErrors(main);
   if (["untagged", "various", "inconsistent", "misplaced", "all"].includes(view)) return renderList(main, view);
@@ -401,7 +410,8 @@ function closeDrawer() {
   drawerOnClose = null;
 }
 $("#drawer").addEventListener("mousedown", (e) => { if (e.target.id === "drawer") closeDrawer(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#drawer").classList.contains("hidden")) closeDrawer(); });
+// Escape in the tag syntax help only closes the help.
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#drawer").classList.contains("hidden") && !$("#tag-help").open) closeDrawer(); });
 
 function majorityOf(values) {
   const c = {};
@@ -588,7 +598,8 @@ async function albumEditor(root, dir, opts = {}) {
         ${fieldRow("genre", t("Genre"))}
         ${loose ? "" : `<label>${t("Compilation")}</label><div><label><input type="checkbox" class="ed-compil" ${s.compilation || allComp ? "checked" : ""}> ${t("Vraie compilation (plusieurs artistes, TCMP=1)")}</label></div>`}
       </div>
-      <p class="small muted" style="margin-bottom:0">${loose ? t("hint.loosefields") : t("hint.albumfields")}</p>
+      <p class="small muted" style="margin-bottom:0">${loose ? t("hint.loosefields") : t("hint.albumfields")}
+        <button type="button" class="link ed-syntax" aria-haspopup="dialog">${t("Syntaxe des tags")}</button></p>
       <label class="small"${tip("tip.loose")}><input type="checkbox" class="ed-loose" ${loose ? "checked" : ""}> ${t("Pistes indépendantes (mixtapes, singles) : chaque fichier est un album")}</label>
     </div>
 
@@ -799,7 +810,7 @@ async function albumEditor(root, dir, opts = {}) {
           </div>`).join("");
         for (const el of $$(".mb-result", res)) el.onclick = () => {
           const r = list[Number(el.dataset.i)];
-          vals[path].title = r.title; vals[path].artist = r.artist;
+          vals[path].title = r.title; vals[path].artist = status && status.split_artists && r.artists ? r.artists : r.artist;
           extra[path] = { mb_trackid: r.id, ...(r.artist_id ? { mb_artistid: r.artist_id } : {}) };
           renderTracks();
           toast(t("Valeurs MusicBrainz reprises — pensez à enregistrer"));
@@ -853,6 +864,7 @@ async function albumEditor(root, dir, opts = {}) {
     if (opts.onReload) opts.onReload(); else albumEditor(root, dir, opts);
   });
   $(".ed-loose", root).onchange = (e) => setLoose(e.target.checked);
+  $(".ed-syntax", root).onclick = () => openTagHelp();
   if ($(".ed-loose-on", root)) $(".ed-loose-on", root).onclick = () => setLoose(true);
   if (!loose) $(".ed-artist-aa", root).onclick = () => {
     const aa = albumArtist();
@@ -1030,6 +1042,9 @@ async function mbMatch(panel, dir, tracks, releaseId, onApplied, editor) {
   box.innerHTML = `<div class="muted">${t("Chargement de la tracklist…")}</div>`;
   const { release: rel, mapping, genre } = await run(() => api("GET", "/api/mb/match?" + qs({ dir, release: releaseId })));
   const isDiscogs = rel.source === "discogs";
+  // A credit of several artists, as the source spells it and split with ';'.
+  const splitExample = [[rel.albumartist, rel.albumartists], ...rel.tracks.map((tk) => [tk.artist, tk.artists])]
+    .find(([a, b]) => b && a !== b);
   const byPath = Object.fromEntries(tracks.map((tk) => [tk.path, tk]));
   const opt = (i, sel) => `<option value="${i}" ${i === sel ? "selected" : ""}>${rel.tracks[i].discs > 1 ? rel.tracks[i].disc + "-" : ""}${rel.tracks[i].position}. ${esc(rel.tracks[i].title)} (${fmtDur(rel.tracks[i].length)})</option>`;
   box.innerHTML = `
@@ -1057,10 +1072,13 @@ async function mbMatch(panel, dir, tracks, releaseId, onApplied, editor) {
     <div class="actions">
       <label><input type="checkbox" class="mb-cover" ${rel.cover ? "checked" : "disabled"}> ${t("Intégrer la pochette dans les fichiers qui n'en ont pas")} ${rel.cover ? "" : t("(indisponible)")}</label>
       ${genre ? `<label><input type="checkbox" class="mb-genre" checked> ${t("Compléter le genre vide : {g}", { g: esc(genre) })}</label>` : ""}
+      ${splitExample ? `<label title="${esc(t("hint.split"))}"><input type="checkbox" class="mb-split" ${status && status.split_artists ? "checked" : ""}>
+        ${t("Séparer les artistes par « ; »")} <span class="muted small">(${esc(splitExample[0])} → ${esc(splitExample[1])})</span></label>` : ""}
       <span style="flex:1"></span>
       <button class="primary mb-apply">${isDiscogs ? t("Appliquer les tags Discogs") : t("Appliquer les tags MusicBrainz")}</button>
     </div>`;
   bindPlay(box);
+  if ($(".mb-split", box)) $(".mb-split", box).onchange = (e) => setSplitArtists(e.target.checked);
   $(".mb-apply", box).onclick = () => run(async () => {
     const map = $$("tbody tr", box).map((row) => {
       const v = $(".map", row).value;
@@ -1074,7 +1092,8 @@ async function mbMatch(panel, dir, tracks, releaseId, onApplied, editor) {
     if (!confirm(msg)) return;
     if (todo.length) await editor.save();
     const r = await api("POST", "/api/mb/apply", { dir, release: releaseId, mapping: map, cover: $(".mb-cover", box).checked,
-      genre: !!($(".mb-genre", box) && $(".mb-genre", box).checked) });
+      genre: !!($(".mb-genre", box) && $(".mb-genre", box).checked),
+      split_artists: !!(status && status.split_artists) });
     toast(t("{n} fichier(s) taggué(s)", { n: r.files }) + (r.cover ? " " + t("avec pochette") : ""));
     onApplied();
   });
@@ -1480,6 +1499,190 @@ function applyGenres(items) {
   });
 }
 
+// ------------------------------------------------------------------ artists
+const A_KEEP = "__keep__";
+const A_STATUS = {
+  sure: [t("artistes connus"), "g-clean", "tip.a.sure"],
+  partial: [t("en partie connus"), "g-weird", "tip.a.partial"],
+  unknown: [t("duo ou groupe ?"), "g-weird", "tip.a.unknown"],
+  single: [t("un dossier porte ce nom"), "g-empty", "tip.a.single"],
+};
+const A_FILTERS = { todo: t("À séparer"), doubt: t("Incertains"), kept: t("Laissés tels quels"), all: t("Tous") };
+const artistState = { filter: "todo", q: "", selected: new Set(), choice: {}, data: null };
+
+async function renderArtists(main) {
+  main.innerHTML = `
+    <h1>${t("Artistes multiples")}</h1>
+    <p class="lead">${t("lead.artists")}</p>
+    <div class="toolbar">
+      <div class="seg" id="a-filter">${Object.entries(A_FILTERS).map(([k, v]) => `<button data-f="${k}">${v}</button>`).join("")}</div>
+      <input type="search" id="a-q" placeholder="${t("Filtrer…")}" value="${esc(artistState.q)}" style="width:240px">
+      <span class="grow"></span>
+      <button id="a-help" aria-haspopup="dialog">${t("Syntaxe des tags")}</button>
+    </div>
+    <div id="a-batch"></div>
+    <div id="a-list"><div class="empty">${t("Chargement…")}</div></div>`;
+  let timer;
+  $("#a-q").oninput = (e) => { clearTimeout(timer); timer = setTimeout(() => { artistState.q = e.target.value; drawArtists(); }, 200); };
+  for (const b of $$("#a-filter button")) b.onclick = () => { artistState.filter = b.dataset.f; artistState.selected.clear(); drawArtists(); };
+  $("#a-help").onclick = () => openTagHelp();
+  loadArtists();
+}
+
+async function loadArtists() {
+  const data = await run(() => api("GET", "/api/artists"));
+  if (!stillOn("artists")) return;
+  artistState.data = data;
+  const raws = new Set(data.items.map((r) => r.raw));
+  for (const raw of [...artistState.selected]) if (!raws.has(raw)) artistState.selected.delete(raw);
+  drawArtists();
+}
+
+const artistKept = (r) => r.proposal === A_KEEP;
+/** Value to write for a row: what the user typed, else the proposal (the raw value when kept). */
+const artistChoice = (r) => artistState.choice[r.raw] ?? (artistKept(r) ? r.raw : r.proposal);
+
+function artistRows() {
+  const { data, filter, q } = artistState;
+  return data.items.filter((r) => {
+    if (q && !fold(r.raw + " " + r.examples.join(" ")).includes(fold(q))) return false;
+    if (filter === "todo") return !artistKept(r) && (r.status === "sure" || r.status === "partial");
+    if (filter === "doubt") return !artistKept(r) && (r.status === "unknown" || r.status === "single");
+    if (filter === "kept") return artistKept(r);
+    return true;
+  });
+}
+
+/** Chips for the artists of a value split with ';', green when the library knows them. */
+function artistParts(r, value) {
+  const known = new Map(r.groups.map((g) => [fold(g.name), g.known]));
+  const parts = value.split(";").map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2) return `<span class="small muted">${t("un seul artiste")}</span>`;
+  return parts.map((p) => {
+    const k = known.get(fold(p.replace(/\s*[([]?\s*\b(feat\.?|ft\.?|featuring)\s.*$/i, "")));
+    const cls = k === true ? "a-known" : k === false ? "a-unknown" : "";
+    return `<span class="chip ${cls}" title="${esc(k === true ? t("Artiste présent dans la bibliothèque") : k === false ? t("Inconnu dans la bibliothèque") : p)}">${esc(p)}</span>`;
+  }).join("");
+}
+
+function drawArtists() {
+  for (const b of $$("#a-filter button")) b.classList.toggle("on", b.dataset.f === artistState.filter);
+  const box = $("#a-list");
+  if (!box || !artistState.data) return;
+  const rows = artistRows();
+  if (!artistState.data.items.length) { box.innerHTML = `<div class="empty">${t("Aucun artiste multiple détecté")}</div>`; drawArtistBatch(rows); return; }
+  if (!rows.length) { box.innerHTML = `<div class="empty">${t("Rien dans cette catégorie")}</div>`; drawArtistBatch(rows); return; }
+  const fieldCounts = (r) => [r.artist ? t("artiste : {n}", { n: fmtNum(r.artist) }) : "", r.albumartist ? t("album artist : {n}", { n: fmtNum(r.albumartist) }) : ""]
+    .filter(Boolean).join("<br>");
+  box.innerHTML = `<table>
+    <thead><tr><th class="check"><input type="checkbox" id="a-all" title="${t("Tout sélectionner")}"></th>
+      <th>${t("Valeur actuelle")}</th><th>${t("Pistes")}</th><th>${t("Dossiers")}</th><th style="width:36%">${t("Écrire à la place")}</th><th></th></tr></thead>
+    <tbody>${rows.slice(0, 600).map((r) => {
+      const [label, cls, why] = A_STATUS[r.status];
+      return `<tr data-raw="${esc(r.raw)}">
+        <td class="check"><input type="checkbox" class="a-sel" ${artistState.selected.has(r.raw) ? "checked" : ""}></td>
+        <td><b class="a-raw">${esc(r.raw)}</b>
+          <div><span class="chip ${cls}"${tip(why)}>${label}</span>
+          ${artistKept(r) ? `<span class="chip">${t("laissé tel quel")}</span>` : r.user_choice ? `<span class="chip">${t("votre choix")}</span>` : ""}</div>
+          <div class="small muted">${r.examples.map(esc).join(" · ")}${r.dirs > r.examples.length ? " …" : ""}</div></td>
+        <td class="small a-counts">${fieldCounts(r)}</td><td>${r.dirs}</td>
+        <td><input class="a-target" value="${esc(artistChoice(r))}" aria-label="${t("Écrire à la place")}">
+          <div class="chips a-parts">${artistParts(r, artistChoice(r))}</div></td>
+        <td style="white-space:nowrap;text-align:right">
+          <button class="link a-detail">${t("Dossiers")}</button>
+          ${artistKept(r) ? "" : `<button class="link a-keep"${tip("tip.a.keep")}>${t("Laisser tel quel")}</button>`}
+          <button class="a-apply"${tip("tip.a.apply")}>${t("Appliquer")}</button></td>
+      </tr><tr class="hidden"><td colspan="6" class="a-detail-box"></td></tr>`;
+    }).join("")}
+    </tbody></table>
+    ${rows.length > 600 ? `<div class="muted small">… ${t("{n} valeurs de plus, affinez le filtre", { n: rows.length - 600 })}</div>` : ""}`;
+  $("#a-all").onchange = (e) => { rows.forEach((r) => e.target.checked ? artistState.selected.add(r.raw) : artistState.selected.delete(r.raw)); drawArtists(); };
+  for (const row of $$("tr[data-raw]", box)) {
+    const raw = row.dataset.raw, r = rows.find((x) => x.raw === raw), next = row.nextElementSibling;
+    $(".a-sel", row).onchange = (e) => { e.target.checked ? artistState.selected.add(raw) : artistState.selected.delete(raw); drawArtistBatch(rows); };
+    $(".a-target", row).oninput = (e) => { artistState.choice[raw] = e.target.value; $(".a-parts", row).innerHTML = artistParts(r, e.target.value); };
+    $(".a-apply", row).onclick = () => applyArtists([{ raw, target: artistChoice(r) }]);
+    if ($(".a-keep", row)) $(".a-keep", row).onclick = () => applyArtists([{ raw, target: A_KEEP }]);
+    $(".a-detail", row).onclick = () => run(async () => {
+      if (!next.classList.contains("hidden")) return next.classList.add("hidden");
+      const dirs = await api("GET", "/api/artists/detail?" + qs({ raw }));
+      $(".a-detail-box", next).innerHTML = `<table class="tracks"><thead><tr><th>${t("Dossier")}</th><th>${t("Artiste")}</th><th>${t("Album artist")}</th></tr></thead><tbody>
+        ${dirs.slice(0, 300).map((d) => `<tr><td><a href="#" data-open="${esc(d.dir)}">${esc(d.dir)}</a></td><td>${d.artist || ""}</td><td>${d.albumartist || ""}</td></tr>`).join("")}</tbody></table>
+        <div class="small muted">${t("Nombre de pistes où la valeur est dans le champ artiste ou album artist.")}</div>`;
+      for (const a of $$("[data-open]", next)) a.onclick = (e) => { e.preventDefault(); openAlbum(a.dataset.open, loadArtists); };
+      next.classList.remove("hidden");
+    });
+  }
+  drawArtistBatch(rows);
+}
+
+function drawArtistBatch(rows) {
+  const sel = rows.filter((r) => artistState.selected.has(r.raw));
+  const n = sel.reduce((s, r) => s + r.artist + r.albumartist, 0);
+  $("#a-batch").innerHTML = `<div class="batchbar">
+    <b>${t("{n} valeur(s) sélectionnée(s)", { n: sel.length })}</b> <span class="muted">${t("{n} tags", { n: fmtNum(n) })}</span>
+    <span style="flex:1"></span>
+    <button id="a-keep-sel"${tip("tip.a.keep")} ${sel.length ? "" : "disabled"}>${t("Laisser tel quel")}</button>
+    <button class="primary" id="a-apply-sel"${tip("tip.a.apply")} ${sel.length ? "" : "disabled"}>${t("Appliquer la séparation")}</button></div>`;
+  $("#a-apply-sel").onclick = () => applyArtists(sel.map((r) => ({ raw: r.raw, target: artistChoice(r) })));
+  $("#a-keep-sel").onclick = () => applyArtists(sel.map((r) => ({ raw: r.raw, target: A_KEEP })));
+}
+
+function applyArtists(items) {
+  // Writing the value unchanged just means "leave it alone".
+  items = items.map((i) => i.target.trim() === i.raw ? { raw: i.raw, target: A_KEEP } : i);
+  if (items.some((i) => !i.target.trim())) return toast(t("Une valeur ne peut pas être vide"), true);
+  const label = (i) => i.target === A_KEEP ? t("laissé tel quel") : i.target;
+  const txt = items.slice(0, 8).map((i) => `• ${i.raw} → ${label(i)}`).join("\n") +
+    (items.length > 8 ? "\n" + t("… et {n} autres", { n: items.length - 8 }) : "");
+  if (!confirm(`${t("Appliquer ?")}\n\n${txt}`)) return;
+  run(async () => {
+    const r = await api("POST", "/api/artists/apply", { items });
+    artistState.selected.clear();
+    for (const i of items) delete artistState.choice[i.raw];
+    if (r.status === "done") { toast(t("Choix mémorisé")); loadArtists(); return; }
+    lastJobStatus = "running"; refreshStatus();
+  });
+}
+
+// ------------------------------------------------------------ tag syntax help
+// Examples are tag values: they are shown as is, only the notes are translated.
+const TAG_SYNTAX = [
+  { field: "Artiste", frame: "TPE1", good: ["Nas", "Nas; DJ Premier", "Black Moon feat. Q-Tip"], bad: ["Nas & DJ Premier", "Nas, DJ Premier", "Nas et DJ Premier"], note: "taghelp.artist" },
+  { field: "Album artist", frame: "TPE2", good: ["Nas", "Nas; DJ Premier", "Various Artists"], bad: ["Nas feat. AZ", "Nas & DJ Premier"], note: "taghelp.albumartist" },
+  { field: "Album", frame: "TALB", good: ["Illmatic", "Illmatic (Deluxe Edition)"], bad: ["Nas - Illmatic", "Illmatic (1994) [320 kbps]", "Illmatic CD1"], note: "taghelp.album" },
+  { field: "Titre", frame: "TIT2", good: ["N.Y. State of Mind"], bad: ["01 - N.Y. State of Mind", "Nas - N.Y. State of Mind"], note: "taghelp.title" },
+  { field: "N° de piste", frame: "TRCK", good: ["3", "3/10"], bad: ["03 -", "A1"], note: "taghelp.track" },
+  { field: "N° de disque", frame: "TPOS", good: ["1/2", "2/2"], bad: ["CD1"], note: "taghelp.disc" },
+  { field: "Année", frame: "TDRC", good: ["1994", "1994-04-19"], bad: ["94", "1994/2004"], note: "taghelp.year" },
+  { field: "Genre", frame: "TCON", good: ["Hip-Hop", "Hip-Hop; Jazz"], bad: ["Hip-Hop/Rap", "Rap & Hip-Hop", "Other", "www.site.com"], note: "taghelp.genre" },
+  { field: "Compilation", frame: "TCMP", good: ["1"], bad: [], note: "taghelp.compilation" },
+];
+
+function openTagHelp() {
+  const dlg = $("#tag-help");
+  const ex = (vals, cls, mark, sr) => vals.map((v) => `<span class="ex ${cls}"><span aria-hidden="true">${mark}</span><span class="visually-hidden">${sr}</span> <span class="mono">${esc(v)}</span></span>`).join("");
+  dlg.innerHTML = `
+    <div class="modal-head"><h2 id="tag-help-title">${t("Syntaxe des tags")}</h2>
+      <button type="button" class="tag-help-close" title="${t("Fermer")}" aria-label="${t("Fermer")}">✕</button></div>
+    <div class="modal-body">
+      <p>${t("taghelp.intro")}</p>
+      <div class="notice">${t("taghelp.separator")}</div>
+      <table class="syntax"><thead><tr><th>${t("Champ")}</th><th>${t("Bonne syntaxe")}</th><th>${t("À éviter")}</th><th>${t("Pourquoi")}</th></tr></thead><tbody>
+        ${TAG_SYNTAX.map((f) => `<tr><td class="field">${t(f.field)}<span class="frame mono">${f.frame}</span></td>
+          <td>${ex(f.good, "good", "✓", t("correct :"))}</td>
+          <td>${f.bad.length ? ex(f.bad, "bad", "✗", t("à éviter :")) : ""}</td>
+          <td>${t(f.note)}</td></tr>`).join("")}
+      </tbody></table>
+      <p class="small muted">${t("taghelp.navidrome")}</p>
+    </div>`;
+  $(".tag-help-close", dlg).onclick = () => dlg.close();
+  for (const link of $$("a[href^='#/']", dlg)) link.addEventListener("click", () => { dlg.close(); closeDrawer(); });
+  dlg.onclick = (e) => { if (e.target === dlg) dlg.close(); };   // click on the backdrop
+  if (!dlg.open) dlg.showModal();
+}
+$("#tag-help-open").onclick = () => { setNav(false); openTagHelp(); };
+
 // ----------------------------------------------------------------- autotag
 const AT_STATUS = {
   ok: [t("à appliquer"), "g-clean"], ambiguous: [t("ambigu"), "g-weird"], partial: [t("incomplet"), "g-weird"],
@@ -1540,6 +1743,7 @@ async function renderAutotag(main) {
       <label><input type="checkbox" id="at-cover" ${o.cover ? "checked" : ""}> ${t("Intégrer la pochette si absente")}</label>
       <label><input type="checkbox" id="at-empty" ${o.only_empty ? "checked" : ""}> ${t("Ne remplir que les champs vides")}</label>
       <label title="${esc(t("hint.strict"))}"><input type="checkbox" id="at-strict" ${o.strict_count ? "checked" : ""}> ${t("Respecter le nombre de pistes")}</label>
+      <label title="${esc(t("hint.split"))}"><input type="checkbox" id="at-split" ${status && status.split_artists ? "checked" : ""}> ${t("Séparer les artistes par « ; »")}</label>
     </div>
     <div class="toolbar"><div class="seg" id="at-filter">${Object.entries(AT_FILTERS).map(([k, v]) => `<button data-f="${k}">${v}</button>`).join("")}</div></div>
     <div id="at-batch"></div>
@@ -1557,6 +1761,7 @@ async function renderAutotag(main) {
     if ([o.min_score, o.strict_count].join() !== before) atState.selected = atDefaultSelection(data.items, o);
     drawAutotag();
   };
+  $("#at-split").onchange = (e) => setSplitArtists(e.target.checked);
   for (const b of $$("#at-filter button")) b.onclick = () => { atState.filter = b.dataset.f; drawAutotag(); };
   drawAutotag();
 }
@@ -1632,7 +1837,7 @@ function drawAutotagBatch(rows) {
     const o = atState.options;
     const yes = (b) => (b ? t("oui") : t("non"));
     const aa = o.albumartist_mode === "fixed" ? t("imposé « {v} »", { v: o.albumartist_value }) : o.albumartist_mode === "folder" ? t("artiste du dossier") : "MusicBrainz";
-    let msg = t("confirm.autotag.apply", { n: sel.length, aa, genre: yes(o.fill_genre), cover: yes(o.cover), empty: yes(o.only_empty), strict: yes(o.strict_count) });
+    let msg = t("confirm.autotag.apply", { n: sel.length, aa, genre: yes(o.fill_genre), cover: yes(o.cover), empty: yes(o.only_empty), strict: yes(o.strict_count), split: yes(status && status.split_artists) });
     if (risky.length) msg += "\n\n⚠ " + t("{n} dossier(s) sous le seuil ou ambigu(s) inclus.", { n: risky.length });
     if (!confirm(msg + "\n\n" + t("Annulable depuis l'historique."))) return;
     run(async () => {

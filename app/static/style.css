@@ -216,6 +216,46 @@ a.btn.primary { background: var(--accent); border-color: var(--accent); color: v
 .chip.g-weird, .chip.g-junk { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 .chip.g-empty { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
 .chip.g-clean { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+
+/* ---- artists */
+.chip.a-known { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+.chip.a-unknown { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.a-target { width: 100%; margin-bottom: 4px; }
+.a-raw { word-break: break-word; }
+.a-counts { white-space: nowrap; }
+
+/* ---- tag syntax help */
+.nav-help { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 6px; padding: 8px 10px;
+  border: none; background: none; color: var(--accent); text-align: left; }
+.nav-help:hover { background: var(--bg); }
+.nav-help svg { width: 18px; height: 18px; flex: none; }
+dialog.modal { width: min(960px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+dialog.modal::backdrop { background: rgba(0,0,0,.45); }
+.modal-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 12px;
+  padding: 12px 18px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.modal-head h2 { flex: 1; margin: 0; }
+.modal-body { padding: 16px 18px 20px; }
+.modal-body p { max-width: 780px; }
+.syntax td { font-size: 13px; }
+.syntax .field { white-space: nowrap; font-weight: 600; }
+.syntax .frame { display: block; font-weight: 400; color: var(--muted); font-size: 11px; }
+.syntax .ex { display: block; white-space: nowrap; }
+.syntax .good { color: var(--ok); }
+.syntax .bad { color: var(--bad); }
+@media (max-width: 800px) {
+  /* one card per field instead of a four-column table */
+  dialog.modal { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  .modal-body { padding: 12px 14px 16px; }
+  .syntax, .syntax tbody, .syntax tr, .syntax td { display: block; }
+  .syntax { overflow: visible; }
+  .syntax thead { display: none; }
+  .syntax tr { border-bottom: 1px solid var(--line); padding: 6px 0; }
+  .syntax td { border: none; padding: 3px 10px; }
+  .syntax td:empty { display: none; }
+  .syntax .frame { display: inline; margin-left: 6px; }
+  .syntax .ex { white-space: normal; }
+}
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .job.hidden + .version { margin-top: auto; }
 

@@ -42,9 +42,13 @@
       <a href="#/errors" data-view="errors"><span data-i18n="Fichiers en erreur">Fichiers en erreur</span> <span class="count" data-count="errors"></span></a>
       <a href="#/autotag" data-view="autotag"><span data-i18n="Tag auto">Tag auto</span> <span class="count" data-count="autotag_ready"></span></a>
       <a href="#/genres" data-view="genres"><span data-i18n="Genres">Genres</span></a>
+      <a href="#/artists" data-view="artists"><span data-i18n="Artistes multiples">Artistes multiples</span></a>
       <a href="#/all" data-view="all"><span data-i18n="Tous les dossiers">Tous les dossiers</span></a>
       <a href="#/history" data-view="history"><span data-i18n="Historique">Historique</span></a>
     </nav>
+    <button type="button" class="nav-help" id="tag-help-open" aria-haspopup="dialog">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/></svg>
+      <span data-i18n="Syntaxe des tags">Syntaxe des tags</span></button>
     <div id="job" class="job hidden"></div>
     <div class="version">v<span id="version"></span> · <a href="https://github.com/Freshapp-io/music-tagger" target="_blank" rel="noopener">GitHub<span class="visually-hidden" data-i18n="(nouvelle fenêtre)"> (nouvelle fenêtre)</span></a> · <a href="https://www.freshapp.io" target="_blank" rel="noopener">freshapp.io<span class="visually-hidden" data-i18n="(nouvelle fenêtre)"> (nouvelle fenêtre)</span></a>
       <div class="switches">
@@ -64,6 +68,7 @@
     <audio id="pl-audio" controls preload="none"></audio>
     <button id="pl-close" data-i18n-title="Fermer le lecteur" title="Fermer le lecteur">✕</button>
   </div>
+  <dialog id="tag-help" class="modal" aria-labelledby="tag-help-title"></dialog>
   <div id="toast" class="toast hidden"></div>
   <script src="/static/app.js"></script>
 </body>
